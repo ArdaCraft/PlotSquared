@@ -1,0 +1,95 @@
+package com.plotsquared.fabric.util.task;
+
+import com.google.common.util.concurrent.Futures;
+import com.google.inject.Inject;
+import com.plotsquared.core.PlotSquared;
+import com.plotsquared.core.util.task.PlotSquaredTask;
+import com.plotsquared.core.util.task.TaskManager;
+import com.plotsquared.core.util.task.TaskTime;
+import com.plotsquared.fabric.FabricPlatform;
+import org.checkerframework.checker.nullness.qual.NonNull;
+
+import java.util.concurrent.Callable;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+
+public class FabricTaskManager extends TaskManager {
+
+    private final FabricPlatform fabricMain;
+    private final TaskTime.TimeConverter timeConverter;
+    public static final FabricTickListener fabricTickListener = new FabricTickListener();
+
+    @Inject
+    public FabricTaskManager(
+            final @NonNull FabricPlatform fabricMain,
+            final TaskTime.@NonNull TimeConverter timeConverter
+    ) {
+        this.fabricMain = fabricMain;
+        this.timeConverter = timeConverter;
+    }
+
+    @Override
+    public PlotSquaredTask taskRepeat(
+            final @NonNull Runnable runnable,
+            final @NonNull TaskTime taskTime
+    ) {
+        final long ticks = this.timeConverter.toTicks(taskTime);
+        final FabricPlotSquaredTask fabricPlotSquaredTask = new FabricPlotSquaredTask(runnable);
+        fabricPlotSquaredTask.runTaskTimer(this.fabricMain, ticks, ticks);
+        return fabricPlotSquaredTask;
+    }
+
+    @Override
+    public PlotSquaredTask taskRepeatAsync(
+            final @NonNull Runnable runnable,
+            final @NonNull TaskTime taskTime
+    ) {
+        final long ticks = this.timeConverter.toTicks(taskTime);
+        final FabricPlotSquaredTask fabricPlotSquaredTask = new FabricPlotSquaredTask(runnable);
+        fabricPlotSquaredTask.runTaskTimerAsynchronously(this.fabricMain, ticks, ticks);
+        return fabricPlotSquaredTask;
+    }
+
+    @Override
+    public void taskAsync(final @NonNull Runnable runnable) {
+            new FabricPlotSquaredTask(runnable).runTaskAsynchronously(this.fabricMain);
+    }
+
+    @Override
+    public <T> T sync(final @NonNull Callable<T> function, final int timeout) throws Exception {
+        if (PlotSquared.get().isMainThread(Thread.currentThread())) {
+            return function.call();
+        }
+        return this.callMethodSync(function).get(timeout, TimeUnit.MILLISECONDS);
+    }
+
+    @Override
+    public <T> Future<T> callMethodSync(final @NonNull Callable<T> method) {
+        return Futures.submit(method, Executors.newSingleThreadExecutor());
+    }
+
+    @Override
+    public void task(final @NonNull Runnable runnable) {
+        new FabricPlotSquaredTask(runnable).runTask();
+    }
+
+    @Override
+    public void taskLater(
+            final @NonNull Runnable runnable,
+            final @NonNull TaskTime taskTime
+    ) {
+        final long delay = this.timeConverter.toTicks(taskTime);
+        new FabricPlotSquaredTask(runnable).runTaskLater(this.fabricMain, delay);
+    }
+
+    @Override
+    public void taskLaterAsync(
+            final @NonNull Runnable runnable,
+            final @NonNull TaskTime taskTime
+    ) {
+        final long delay = this.timeConverter.toTicks(taskTime);
+        new FabricPlotSquaredTask(runnable).runTaskLaterAsynchronously(this.fabricMain, delay);
+    }
+
+}

@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "plotsquared-fabric",
+  "version": "${version}",
+  "name": "plotsquared-fabric",
+  "description": "",
+  "authors": [],
+  "contact": {},
+  "license": "All-Rights-Reserved",
+  "icon": "assets/plotsquared-fabric/icon.png",
+  "environment": "server",
+  "entrypoints": {},
+  "mixins": [
+    "plotsquared-fabric.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric": "*",
+    "minecraft": "${minecraft_version}"
+  },
+  "accessWidener": "plotsquared-fabric.accessWidener"
+}
