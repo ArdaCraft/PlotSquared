@@ -11,7 +11,7 @@ import java.lang.reflect.Method;
 
 import static com.plotsquared.core.util.ReflectionUtils.getRefClass;
 
-public class SingleWorldListener implements Listener {
+public class SingleWorldListener {
 
     private final Method methodSetUnsaved;
     private Method methodGetHandleChunk;

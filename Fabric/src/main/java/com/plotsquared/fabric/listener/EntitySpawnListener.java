@@ -25,16 +25,22 @@ import com.plotsquared.core.plot.Plot;
 import com.plotsquared.core.plot.PlotArea;
 import com.plotsquared.core.plot.flag.implementations.DoneFlag;
 import com.plotsquared.fabric.data.PlotSquaredDataAttachments;
+import com.plotsquared.fabric.listener.event.EntityOnInsideBlockCallback;
+import com.plotsquared.fabric.listener.event.EntityTeleportToCallback;
 import com.plotsquared.fabric.listener.event.HandleMoveVehicleCallback;
 import com.plotsquared.fabric.util.FabricEntityUtil;
 import com.plotsquared.fabric.util.FabricUtil;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerChunkEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.networking.v1.EntityTrackingEvents;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.GlobalPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.level.dimension.BuiltinDimensionTypes;
 import net.minecraft.world.phys.AABB;
 import org.checkerframework.checker.nullness.qual.NonNull;
@@ -56,15 +62,6 @@ public class EntitySpawnListener {
             if (!location.isPlotArea() || area == null) {
                 return InteractionResult.PASS;
             }
-            /*
-            if (PaperLib.isPaper()) {
-                //noinspection ConstantValue - getEntitySpawnReason annotated as NotNull, but is not NotNull. lol.
-                if (area.isSpawnCustom() && entity.getEntitySpawnReason() != null && "CUSTOM".equals(entity
-                        .getEntitySpawnReason()
-                        .name())) {
-                    return;
-                }
-            }*/
             Plot plot = location.getOwnedPlotAbs();
             EntityType<?> type = entity.getType();
             if (plot == null) {
@@ -130,6 +127,46 @@ public class EntitySpawnListener {
            return InteractionResult.PASS;
         });
 
+        HandleMoveVehicleCallback.EVENT.register((serverboundMoveVehiclePacket, serverPlayer) -> {
+            testNether(serverPlayer.getRootVehicle());
+            return InteractionResult.PASS;
+        });
+
+        EntityOnInsideBlockCallback.EVENT.register((blockState, entity) -> {
+            testNether(entity);
+            return InteractionResult.PASS;
+        });
+
+
+        EntityTeleportToCallback.EVENT.register((serverLevel, d, e, f, set, g, h, entity) -> {
+            Entity fromLocation = entity;
+            BlockPos toLocation = new BlockPos((int) d, (int) e, (int) f);
+            final Location fromLocLocation = FabricUtil.adapt(GlobalPos.of(entity.level().dimension(), entity.blockPosition()));
+            final PlotArea fromArea = fromLocLocation.getPlotArea();
+            Location toLocLocation = FabricUtil.adapt(GlobalPos.of(serverLevel.dimension(), toLocation));
+            PlotArea toArea = toLocLocation.getPlotArea();
+
+            if (toArea == null) {
+                if (fromLocation.getType() == EntityType.SHULKER && fromArea != null) {
+                    return InteractionResult.FAIL;
+                }
+                return InteractionResult.PASS;
+            }
+            Plot toPlot = toArea.getOwnedPlot(toLocLocation);
+            if (fromLocation.getType() == EntityType.SHULKER && fromArea != null) {
+                final Plot fromPlot = fromArea.getOwnedPlot(fromLocLocation);
+
+                if (fromPlot != null || toPlot != null) {
+                    if ((fromPlot == null || !fromPlot.equals(toPlot)) && (toPlot == null || !toPlot.equals(fromPlot))) {
+                        return InteractionResult.FAIL;
+                    }
+                }
+            }
+            if (entity.isVehicle() || entity instanceof ArmorStand) {
+                testNether(entity);
+            }
+            return InteractionResult.PASS;
+        });
 
     }
 
@@ -192,52 +229,11 @@ public class EntitySpawnListener {
         }
     }
 
+    /* TODO CREATE ENTITY TICK EVENT */
     /*
     @EventHandler
     public void onVehicle(VehicleUpdateEvent event) {
         testNether(event.getVehicle());
     }
 */
-    @EventHandler
-    public void onVehicle(VehicleBlockCollisionEvent event) {
-        testNether(event.getVehicle());
-    }
-
-    @EventHandler
-    public void onTeleport(EntityTeleportEvent event) {
-        Entity entity = event.getEntity();
-        Entity fromLocation = event.getEntity();
-        Block toLocation = event.getTo().getBlock();
-        final Location fromLocLocation = BukkitUtil.adapt(fromLocation.getLocation());
-        final PlotArea fromArea = fromLocLocation.getPlotArea();
-        Location toLocLocation = BukkitUtil.adapt(toLocation.getLocation());
-        PlotArea toArea = toLocLocation.getPlotArea();
-
-        if (toArea == null) {
-            if (fromLocation.getType() == EntityType.SHULKER && fromArea != null) {
-                event.setCancelled(true);
-            }
-            return;
-        }
-        Plot toPlot = toArea.getOwnedPlot(toLocLocation);
-        if (fromLocation.getType() == EntityType.SHULKER && fromArea != null) {
-            final Plot fromPlot = fromArea.getOwnedPlot(fromLocLocation);
-
-            if (fromPlot != null || toPlot != null) {
-                if ((fromPlot == null || !fromPlot.equals(toPlot)) && (toPlot == null || !toPlot.equals(fromPlot))) {
-                    event.setCancelled(true);
-                    return;
-                }
-            }
-        }
-        if (entity instanceof Vehicle || entity instanceof ArmorStand) {
-            testNether(event.getEntity());
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void vehicleMove(VehicleMoveEvent event) {
-        testNether(event.getVehicle());
-    }
-
 }

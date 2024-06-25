@@ -8,8 +8,17 @@ import com.plotsquared.core.queue.subscriber.ProgressSubscriber;
 import com.plotsquared.core.util.task.PlotSquaredTask;
 import com.plotsquared.core.util.task.TaskManager;
 import com.plotsquared.core.util.task.TaskTime;
+import com.plotsquared.fabric.util.FabricUtil;
 import com.sk89q.worldedit.math.BlockVector2;
 import com.sk89q.worldedit.world.World;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.Ticket;
+import net.minecraft.server.level.TicketType;
+import net.minecraft.util.Unit;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.chunk.ChunkAccess;
+import net.minecraft.world.level.chunk.ChunkStatus;
+import net.minecraft.world.level.chunk.LevelChunk;
 import org.checkerframework.checker.nullness.qual.NonNull;
 
 import java.util.Collection;
@@ -25,11 +34,10 @@ public class FabricChunkCoordinator extends ChunkCoordinator {
     private final List<ProgressSubscriber> progressSubscribers = new LinkedList<>();
 
     private final Queue<BlockVector2> requestedChunks;
-    private final Queue<Chunk> availableChunks;
+    private final Queue<ChunkAccess> availableChunks;
     private final long maxIterationTime;
-    private final Plugin plugin;
     private final Consumer<BlockVector2> chunkConsumer;
-    private final org.bukkit.World bukkitWorld;
+    private final ServerLevel serverLevel;
     private final Runnable whenDone;
     private final Consumer<Throwable> throwableConsumer;
     private final boolean unloadAfter;
@@ -44,7 +52,7 @@ public class FabricChunkCoordinator extends ChunkCoordinator {
     private boolean finished;
 
     @Inject
-    private BukkitChunkCoordinator(
+    private FabricChunkCoordinator(
             @Assisted final long maxIterationTime,
             @Assisted final int initialBatchSize,
             @Assisted final @NonNull Consumer<BlockVector2> chunkConsumer,
@@ -66,8 +74,7 @@ public class FabricChunkCoordinator extends ChunkCoordinator {
         this.whenDone = whenDone;
         this.throwableConsumer = throwableConsumer;
         this.unloadAfter = unloadAfter;
-        this.plugin = JavaPlugin.getPlugin(BukkitPlatform.class);
-        this.bukkitWorld = Bukkit.getWorld(world.getName());
+        this.serverLevel = FabricUtil.getWorld(world.getName());
         this.progressSubscribers.addAll(progressSubscribers);
         this.forceSync = forceSync;
     }
@@ -117,7 +124,7 @@ public class FabricChunkCoordinator extends ChunkCoordinator {
     public void run() {
         if (shouldCancel) {
             if (unloadAfter) {
-                Chunk chunk;
+                ChunkAccess chunk;
                 while ((chunk = availableChunks.poll()) != null) {
                     freeChunk(chunk);
                 }
@@ -126,7 +133,7 @@ public class FabricChunkCoordinator extends ChunkCoordinator {
             return;
         }
 
-        Chunk chunk = this.availableChunks.poll();
+        ChunkAccess chunk = this.availableChunks.poll();
         if (chunk == null) {
             if (this.availableChunks.isEmpty()) {
                 if (this.requestedChunks.isEmpty() && loadingChunks.get() == 0) {
@@ -142,7 +149,7 @@ public class FabricChunkCoordinator extends ChunkCoordinator {
         do {
             final long start = System.currentTimeMillis();
             try {
-                this.chunkConsumer.accept(BlockVector2.at(chunk.getX(), chunk.getZ()));
+                this.chunkConsumer.accept(BlockVector2.at(chunk.getPos().x, chunk.getPos().z));
             } catch (final Throwable throwable) {
                 this.throwableConsumer.accept(throwable);
             }
@@ -183,8 +190,8 @@ public class FabricChunkCoordinator extends ChunkCoordinator {
         for (int i = 0; i < this.batchSize && (chunk = this.requestedChunks.poll()) != null; i++) {
             // This required PaperLib to be bumped to version 1.0.4 to mark the request as urgent
             loadingChunks.incrementAndGet();
-            PaperLib
-                    .getChunkAtAsync(this.bukkitWorld, chunk.getX(), chunk.getZ(), true, true)
+
+            serverLevel.getChunkSource().getChunkFuture(chunk.getX(), chunk.getZ(), ChunkStatus.FULL, true)
                     .whenComplete((chunkObject, throwable) -> {
                         loadingChunks.decrementAndGet();
                         if (throwable != null) {
@@ -192,9 +199,9 @@ public class FabricChunkCoordinator extends ChunkCoordinator {
                             // We want one less because this couldn't be processed
                             this.expectedSize.decrementAndGet();
                         } else if (PlotSquared.get().isMainThread(Thread.currentThread())) {
-                            this.processChunk(chunkObject);
+                            this.processChunk(chunkObject.left().get());
                         } else {
-                            TaskManager.runTask(() -> this.processChunk(chunkObject));
+                            TaskManager.runTask(() -> this.processChunk(chunkObject.left().get()));
                         }
                     });
         }
@@ -205,7 +212,7 @@ public class FabricChunkCoordinator extends ChunkCoordinator {
      * available chunks list). It is important that this gets executed on the
      * server's main thread.
      */
-    private void processChunk(final @NonNull Chunk chunk) {
+    private void processChunk(final @NonNull ChunkAccess chunk) {
         /* Chunk#isLoaded does not necessarily return true shortly after PaperLib#getChunkAtAsync completes, but the chunk is
         still loaded.
         if (!chunk.isLoaded()) {
@@ -214,18 +221,19 @@ public class FabricChunkCoordinator extends ChunkCoordinator {
         if (finished) {
             return;
         }
-        chunk.addPluginChunkTicket(this.plugin);
+        serverLevel.getChunkSource().addRegionTicket(TicketType.UNKNOWN, chunk.getPos(), 11, chunk.getPos());
         this.availableChunks.add(chunk);
     }
 
     /**
      * Once a chunk has been used, free it up for unload by removing the plugin ticket
      */
-    private void freeChunk(final @NonNull Chunk chunk) {
-        if (!chunk.isLoaded()) {
-            throw new IllegalArgumentException(String.format("Chunk %d;%d is is not loaded", chunk.getX(), chunk.getZ()));
+    private void freeChunk(final @NonNull ChunkAccess chunk) {
+        if (!serverLevel.isLoaded(chunk.getPos().getWorldPosition())) {
+            throw new IllegalArgumentException(String.format("Chunk %d;%d is is not loaded", chunk.getPos().x,
+                    chunk.getPos().z));
         }
-        chunk.removePluginChunkTicket(this.plugin);
+        serverLevel.getChunkSource().removeRegionTicket(TicketType.UNKNOWN, chunk.getPos(), 11, chunk.getPos());
     }
 
     @Override

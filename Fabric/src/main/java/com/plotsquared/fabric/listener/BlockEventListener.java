@@ -19,8 +19,6 @@
 package com.plotsquared.fabric.listener;
 
 import com.google.inject.Inject;
-import com.plotsquared.bukkit.player.BukkitPlayer;
-import com.plotsquared.bukkit.util.BukkitUtil;
 import com.plotsquared.core.PlotSquared;
 import com.plotsquared.core.configuration.Settings;
 import com.plotsquared.core.configuration.caption.TranslatableCaption;
@@ -29,7 +27,28 @@ import com.plotsquared.core.permissions.Permission;
 import com.plotsquared.core.player.PlotPlayer;
 import com.plotsquared.core.plot.Plot;
 import com.plotsquared.core.plot.PlotArea;
-import com.plotsquared.core.plot.flag.implementations.*;
+import com.plotsquared.core.plot.flag.implementations.BlockBurnFlag;
+import com.plotsquared.core.plot.flag.implementations.BlockIgnitionFlag;
+import com.plotsquared.core.plot.flag.implementations.BreakFlag;
+import com.plotsquared.core.plot.flag.implementations.ConcreteHardenFlag;
+import com.plotsquared.core.plot.flag.implementations.CoralDryFlag;
+import com.plotsquared.core.plot.flag.implementations.CropGrowFlag;
+import com.plotsquared.core.plot.flag.implementations.DisablePhysicsFlag;
+import com.plotsquared.core.plot.flag.implementations.DoneFlag;
+import com.plotsquared.core.plot.flag.implementations.ExplosionFlag;
+import com.plotsquared.core.plot.flag.implementations.GrassGrowFlag;
+import com.plotsquared.core.plot.flag.implementations.IceFormFlag;
+import com.plotsquared.core.plot.flag.implementations.IceMeltFlag;
+import com.plotsquared.core.plot.flag.implementations.InstabreakFlag;
+import com.plotsquared.core.plot.flag.implementations.KelpGrowFlag;
+import com.plotsquared.core.plot.flag.implementations.LeafDecayFlag;
+import com.plotsquared.core.plot.flag.implementations.LiquidFlowFlag;
+import com.plotsquared.core.plot.flag.implementations.MycelGrowFlag;
+import com.plotsquared.core.plot.flag.implementations.PlaceFlag;
+import com.plotsquared.core.plot.flag.implementations.SnowFormFlag;
+import com.plotsquared.core.plot.flag.implementations.SnowMeltFlag;
+import com.plotsquared.core.plot.flag.implementations.SoilDryFlag;
+import com.plotsquared.core.plot.flag.implementations.VineGrowFlag;
 import com.plotsquared.core.plot.flag.types.BlockTypeWrapper;
 import com.plotsquared.core.plot.flag.types.BooleanFlag;
 import com.plotsquared.core.plot.world.PlotAreaManager;
@@ -38,39 +57,39 @@ import com.plotsquared.core.util.task.TaskManager;
 import com.plotsquared.core.util.task.TaskTime;
 import com.plotsquared.fabric.FabricPlatform;
 import com.plotsquared.fabric.player.FabricPlayer;
-import com.plotsquared.fabric.util.FabricChunkManager;
 import com.plotsquared.fabric.util.FabricUtil;
 import com.plotsquared.fabric.util.FabricWorld;
 import com.sk89q.worldedit.WorldEdit;
-import com.sk89q.worldedit.bukkit.BukkitAdapter;
+import com.sk89q.worldedit.fabric.FabricAdapter;
 import com.sk89q.worldedit.world.block.BlockType;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerBlockEntityEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.tag.Tag;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.GlobalPos;
-import net.minecraft.server.level.ServerChunkCache;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.tags.BlockTags;
+import net.minecraft.tags.ItemTags;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.FallingBlock;
+import net.minecraft.world.level.block.GrassBlock;
+import net.minecraft.world.level.block.SculkSpreader;
 import net.minecraft.world.level.block.state.BlockState;
-import org.bukkit.Bukkit;
-import org.bukkit.GameMode;
-import org.bukkit.Material;
-import org.bukkit.block.Block;
-import org.bukkit.block.BlockFace;
-import org.bukkit.block.BlockState;
-import org.bukkit.block.data.BlockData;
-import org.bukkit.block.data.type.Dispenser;
-import org.bukkit.block.data.type.Farmland;
-import org.bukkit.entity.Entity;
-import org.bukkit.entity.Fireball;
-import org.bukkit.entity.Player;
-import org.bukkit.entity.Projectile;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.EventPriority;
-import org.bukkit.event.Listener;
-import org.bukkit.event.block.*;
-import org.bukkit.event.world.StructureGrowEvent;
-import org.bukkit.projectiles.BlockProjectileSource;
-import org.bukkit.util.Vector;
 import org.checkerframework.checker.nullness.qual.NonNull;
+import xyz.nucleoid.stimuli.Stimuli;
+import xyz.nucleoid.stimuli.event.block.BlockBreakEvent;
+import xyz.nucleoid.stimuli.event.block.BlockPlaceEvent;
+import xyz.nucleoid.stimuli.event.block.BlockRandomTickEvent;
 
 import java.util.Iterator;
 import java.util.List;
@@ -79,16 +98,9 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static org.bukkit.Tag.*;
 
 @SuppressWarnings("unused")
-public class BlockEventListener implements Listener {
-
-    private static final Set<Material> SNOW = Stream.of(Material.values()) // needed as Tag.SNOW isn't present in 1.16.5
-            .filter(material -> material.name().contains("SNOW"))
-            .filter(Material::isBlock)
-            .collect(Collectors.toUnmodifiableSet());
-
+public class BlockEventListener {
     private final PlotAreaManager plotAreaManager;
     private final WorldEdit worldEdit;
 
@@ -96,6 +108,10 @@ public class BlockEventListener implements Listener {
     public BlockEventListener(final @NonNull PlotAreaManager plotAreaManager, final @NonNull WorldEdit worldEdit) {
         this.plotAreaManager = plotAreaManager;
         this.worldEdit = worldEdit;
+
+        Stimuli.global().listen(BlockPlaceEvent.AFTER, this::blockCreate);
+        Stimuli.global().listen(BlockBreakEvent.EVENT, this::blockDestroy);
+        Stimuli.global().listen(BlockRandomTickEvent.EVENT, this::onBlockSpread);
     }
 
     public static void sendBlockChange(final GlobalPos bloc, final BlockState data) {
@@ -118,18 +134,17 @@ public class BlockEventListener implements Listener {
     }
 
 
-    public void blockCreate(BlockPlaceEvent event) {
-        Location location = BukkitUtil.adapt(event.getBlock().getLocation());
+    public InteractionResult blockCreate(ServerPlayer serverPlayer, ServerLevel serverLevel, BlockPos blockPos, BlockState blockState) {
+        Location location = FabricUtil.adapt(GlobalPos.of(serverLevel.dimension(), blockPos));
         PlotArea area = location.getPlotArea();
         if (area == null) {
-            return;
+            return InteractionResult.PASS;
         }
-        Player player = event.getPlayer();
-        BukkitPlayer pp = BukkitUtil.adapt(player);
+        ServerPlayer player = serverPlayer;
+        FabricPlayer pp = FabricUtil.adapt(player);
         Plot plot = area.getPlot(location);
         if (plot != null) {
             if (area.notifyIfOutsideBuildArea(pp, location.getY())) {
-                event.setCancelled(true);
                 pp.sendMessage(
                         TranslatableCaption.of("height.height_limit"),
                         TagResolver.builder()
@@ -137,7 +152,7 @@ public class BlockEventListener implements Listener {
                                 .tag("maxheight", Tag.inserting(Component.text(area.getMaxBuildHeight())))
                                 .build()
                 );
-                return;
+                return InteractionResult.FAIL;
             }
             if (!plot.hasOwner()) {
                 if (!pp.hasPermission(Permission.PERMISSION_ADMIN_BUILD_UNOWNED)) {
@@ -148,16 +163,15 @@ public class BlockEventListener implements Listener {
                                     Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_UNOWNED)
                             )
                     );
-                    event.setCancelled(true);
-                    return;
+                    return InteractionResult.FAIL;
                 }
             } else if (!plot.isAdded(pp.getUUID())) {
                 List<BlockTypeWrapper> place = plot.getFlag(PlaceFlag.class);
                 if (place != null) {
-                    Block block = event.getBlock();
+                    Block block = blockState.getBlock();
                     if (place.contains(
-                            BlockTypeWrapper.get(BukkitAdapter.asBlockType(block.getType())))) {
-                        return;
+                            BlockTypeWrapper.get(FabricAdapter.adapt(block)))) {
+                        return InteractionResult.PASS;
                     }
                 }
                 if (!pp.hasPermission(Permission.PERMISSION_ADMIN_BUILD_OTHER)) {
@@ -168,25 +182,23 @@ public class BlockEventListener implements Listener {
                                     Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_OTHER)
                             )
                     );
-                    event.setCancelled(true);
-                    plot.debug(player.getName() + " could not place " + event.getBlock().getType()
+                    plot.debug(player.getName() + " could not place " + blockState.getBlock().getName()
                             + " because of the place = false");
-                    return;
+                    return InteractionResult.FAIL;
                 }
             } else if (Settings.Done.RESTRICT_BUILDING && DoneFlag.isDone(plot)) {
                 if (!pp.hasPermission(Permission.PERMISSION_ADMIN_BUILD_OTHER)) {
                     pp.sendMessage(
                             TranslatableCaption.of("done.building_restricted")
                     );
-                    event.setCancelled(true);
-                    return;
+                    return InteractionResult.FAIL;
                 }
             }
             if (plot.getFlag(DisablePhysicsFlag.class)) {
-                Block block = event.getBlockPlaced();
-                if (block.getType().hasGravity()) {
-                    sendBlockChange(block.getLocation(), block.getBlockData());
-                    plot.debug(event.getBlock().getType()
+                Block block = blockState.getBlock();
+                if (block instanceof FallingBlock) {
+                    sendBlockChange(GlobalPos.of(serverLevel.dimension(), blockPos), blockState);
+                    plot.debug(block.getName()
                             + " did not fall because of disable-physics = true");
                 }
             }
@@ -198,23 +210,23 @@ public class BlockEventListener implements Listener {
                             Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_ROAD)
                     )
             );
-            event.setCancelled(true);
+            return InteractionResult.FAIL;
         }
+        return InteractionResult.PASS;
     }
 
-    @EventHandler(priority = EventPriority.LOWEST)
-    public void blockDestroy(BlockBreakEvent event) {
-        Player player = event.getPlayer();
-        Location location = BukkitUtil.adapt(event.getBlock().getLocation());
+    public InteractionResult blockDestroy(ServerPlayer serverPlayer, ServerLevel serverLevel, BlockPos blockPos) {
+        ServerPlayer player = serverPlayer;
+        Location location = FabricUtil.adapt(GlobalPos.of(serverLevel.dimension(), blockPos));
         PlotArea area = location.getPlotArea();
         if (area == null) {
-            return;
+            return InteractionResult.PASS;
         }
         Plot plot = area.getPlot(location);
         if (plot != null) {
-            BukkitPlayer plotPlayer = BukkitUtil.adapt(player);
+            FabricPlayer plotPlayer = FabricUtil.adapt(player);
             // == rather than <= as we only care about the "ground level" not being destroyed
-            if (event.getBlock().getY() == area.getMinGenHeight()) {
+            if (blockPos.getY() == area.getMinGenHeight()) {
                 if (!plotPlayer.hasPermission(Permission.PERMISSION_ADMIN_DESTROY_GROUNDLEVEL)) {
                     plotPlayer.sendMessage(
                             TranslatableCaption.of("permission.no_permission_event"),
@@ -223,11 +235,9 @@ public class BlockEventListener implements Listener {
                                     Tag.inserting(Permission.PERMISSION_ADMIN_DESTROY_GROUNDLEVEL)
                             )
                     );
-                    event.setCancelled(true);
-                    return;
+                    return InteractionResult.FAIL;
                 }
             } else if (area.notifyIfOutsideBuildArea(plotPlayer, location.getY())) {
-                event.setCancelled(true);
                 plotPlayer.sendMessage(
                         TranslatableCaption.of("height.height_limit"),
                         TagResolver.builder()
@@ -235,25 +245,25 @@ public class BlockEventListener implements Listener {
                                 .tag("maxheight", Tag.inserting(Component.text(area.getMaxBuildHeight())))
                                 .build()
                 );
-                return;
+                return InteractionResult.FAIL;
             }
             if (!plot.hasOwner()) {
                 if (!plotPlayer.hasPermission(Permission.PERMISSION_ADMIN_DESTROY_UNOWNED, true)) {
-                    event.setCancelled(true);
+                    return InteractionResult.FAIL;
                 }
-                return;
+                return InteractionResult.PASS;
             }
             if (!plot.isAdded(plotPlayer.getUUID())) {
                 List<BlockTypeWrapper> destroy = plot.getFlag(BreakFlag.class);
-                Block block = event.getBlock();
-                final BlockType blockType = BukkitAdapter.asBlockType(block.getType());
+                Block block = serverLevel.getBlockState(blockPos).getBlock();
+                final BlockType blockType = FabricAdapter.adapt(block);
                 for (final BlockTypeWrapper blockTypeWrapper : destroy) {
                     if (blockTypeWrapper.accepts(blockType)) {
-                        return;
+                        return InteractionResult.PASS;
                     }
                 }
                 if (plotPlayer.hasPermission(Permission.PERMISSION_ADMIN_DESTROY_OTHER)) {
-                    return;
+                    return InteractionResult.PASS;
                 }
                 plotPlayer.sendMessage(
                         TranslatableCaption.of("permission.no_permission_event"),
@@ -262,26 +272,24 @@ public class BlockEventListener implements Listener {
                                 Tag.inserting(Permission.PERMISSION_ADMIN_DESTROY_OTHER)
                         )
                 );
-                event.setCancelled(true);
+                return InteractionResult.FAIL; //event.setCancelled();
             } else if (Settings.Done.RESTRICT_BUILDING && DoneFlag.isDone(plot)) {
                 if (!plotPlayer.hasPermission(Permission.PERMISSION_ADMIN_BUILD_OTHER)) {
                     plotPlayer.sendMessage(
                             TranslatableCaption.of("done.building_restricted")
                     );
-                    event.setCancelled(true);
-                    return;
+                    return InteractionResult.FAIL;
                 }
             }
-            return;
+            return InteractionResult.PASS;
         }
-        BukkitPlayer pp = BukkitUtil.adapt(player);
+        FabricPlayer pp = FabricUtil.adapt(player);
         if (pp.hasPermission(Permission.PERMISSION_ADMIN_DESTROY_ROAD)) {
-            return;
+            return InteractionResult.PASS;
         }
         if (this.worldEdit != null && pp.getAttribute("worldedit")) {
-            if (player.getInventory().getItemInMainHand().getType() == Material
-                    .getMaterial(this.worldEdit.getConfiguration().wandItem)) {
-                return;
+            if (player.getMainHandItem().getItem() == BuiltInRegistries.ITEM.get(new ResourceLocation(this.worldEdit.getConfiguration().wandItem))) {
+                return InteractionResult.PASS;
             }
         }
         pp.sendMessage(
@@ -291,66 +299,65 @@ public class BlockEventListener implements Listener {
                         Tag.inserting(Permission.PERMISSION_ADMIN_DESTROY_ROAD)
                 )
         );
-        event.setCancelled(true);
+        return InteractionResult.FAIL;
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onBlockSpread(BlockSpreadEvent event) {
-        Block block = event.getBlock();
-        Location location = BukkitUtil.adapt(block.getLocation());
+    public InteractionResult onBlockSpread(ServerLevel serverLevel, BlockPos blockPos, BlockState blockState) {
+        Block block = blockState.getBlock();
+        Location location = FabricUtil.adapt(GlobalPos.of(serverLevel.dimension(), blockPos));
         if (location.isPlotRoad()) {
-            event.setCancelled(true);
-            return;
+            return InteractionResult.FAIL;
         }
         PlotArea area = location.getPlotArea();
         if (area == null) {
-            return;
+            return InteractionResult.PASS;
         }
         Plot plot = area.getOwnedPlot(location);
         if (plot == null) {
-            return;
+            return InteractionResult.PASS;
         }
-        switch (event.getSource().getType().toString()) {
-            case "GRASS_BLOCK":
+        switch (block.asItem().toString()) {
+            case "grass_block":
                 if (!plot.getFlag(GrassGrowFlag.class)) {
                     plot.debug("Grass could not grow because grass-grow = false");
-                    event.setCancelled(true);
+                    return InteractionResult.FAIL;
                 }
                 break;
-            case "MYCELIUM":
+            case "mycelium":
                 if (!plot.getFlag(MycelGrowFlag.class)) {
                     plot.debug("Mycelium could not grow because mycel-grow = false");
-                    event.setCancelled(true);
+                    return InteractionResult.FAIL;
                 }
                 break;
-            case "WEEPING_VINES":
-            case "TWISTING_VINES":
-            case "CAVE_VINES":
-            case "VINE":
-            case "GLOW_BERRIES":
+            case "weeping_vines":
+            case "twisting_vines":
+            case "cave_vines":
+            case "vine":
+            case "glow_berries":
                 if (!plot.getFlag(VineGrowFlag.class)) {
                     plot.debug("Vine could not grow because vine-grow = false");
-                    event.setCancelled(true);
+                    return InteractionResult.FAIL;
                 }
                 break;
-            case "KELP":
+            case "kelp":
                 if (!plot.getFlag(KelpGrowFlag.class)) {
                     plot.debug("Kelp could not grow because kelp-grow = false");
-                    event.setCancelled(true);
+                    return InteractionResult.FAIL;
                 }
-            case "BUDDING_AMETHYST":
+            case "budding_amethyst":
                 if (!plot.getFlag(CropGrowFlag.class)) {
                     plot.debug("Amethyst clusters could not grow because crop-grow = false");
-                    event.setCancelled(true);
+                    return InteractionResult.FAIL;
                 }
                 break;
         }
+        return InteractionResult.PASS;
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onCauldronEmpty(CauldronLevelChangeEvent event) {
         Entity entity = event.getEntity();
-        Location location = BukkitUtil.adapt(event.getBlock().getLocation());
+        Location location = FabricUtil.adapt(event.getBlock().getLocation());
         PlotArea area = location.getPlotArea();
         if (area == null) {
             return;

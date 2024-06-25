@@ -1,16 +1,19 @@
 {
-  "required" : true,
-  "minVersion" : "0.8",
-  "package" : "com.plotsquared.fabric.listener.mixin",
-  "compatibilityLevel" : "JAVA_17",
-  "mixins" : [
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.plotsquared.fabric.listener.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "mixins": [
+    "BaseFireBlockMixin",
     "BoatMixin",
+    "BucketItemMixin",
+    "EntityMixin",
     "ServerGamePacketListenerImplMixin",
     "ServerPlayerMixin"
   ],
-  "client" : [
+  "client": [
   ],
-  "injectors" : {
-    "defaultRequire" : 1
+  "injectors": {
+    "defaultRequire": 1
   }
 }

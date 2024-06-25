@@ -7,7 +7,7 @@ public class FabricAugmentedGenerator {
     private static FabricAugmentedGenerator generator;
 
     public static FabricAugmentedGenerator get(ServerLevel world) {
-        for ()
+
     }
 
 }

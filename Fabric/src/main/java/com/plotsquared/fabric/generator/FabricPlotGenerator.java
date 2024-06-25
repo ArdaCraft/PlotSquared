@@ -74,7 +74,7 @@ public class FabricPlotGenerator extends ChunkGenerator implements GeneratorWrap
             throw new IllegalStateException("ChunkGenerator: " + cg.getClass().getName() + " is already a FabricPlotGenerator");
         }
         this.plotAreaManager = plotAreaManager;
-        this.levelName = name;
+        this.levelName = world;
         this.full = false;
         this.platformGenerator = cg;
         this.plotGenerator = new DelegatePlotGenerator(cg, world);

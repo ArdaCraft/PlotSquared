@@ -5,3 +5,8 @@ accessible field net/minecraft/server/level/ChunkMap visibleChunkMap Lit/unimi/d
 accessible field com/plotsquared/core/util/task/TaskManager tasks Ljava/util/Map;
 accessible field net/minecraft/server/level/ChunkMap viewDistance I
 accessible method net/minecraft/server/level/ServerLevel getEntities ()Lnet/minecraft/world/level/entity/LevelEntityGetter;
+accessible field net/minecraft/network/protocol/game/ServerboundInteractPacket action Lnet/minecraft/network/protocol/game/ServerboundInteractPacket$Action;
+accessible method net/minecraft/network/protocol/game/ServerboundInteractPacket$Action getType ()Lnet/minecraft/network/protocol/game/ServerboundInteractPacket$ActionType;
+accessible class net/minecraft/network/protocol/game/ServerboundInteractPacket$ActionType
+accessible field net/minecraft/world/level/block/state/pattern/BlockPattern$BlockPatternMatch cache Lcom/google/common/cache/LoadingCache;
+accessible field net/minecraft/world/entity/animal/horse/Horse$HorseGroupData variant Lnet/minecraft/world/entity/animal/horse/Variant;

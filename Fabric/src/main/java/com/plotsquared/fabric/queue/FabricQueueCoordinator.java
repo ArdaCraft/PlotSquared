@@ -8,6 +8,7 @@ import com.plotsquared.core.queue.BasicQueueCoordinator;
 import com.plotsquared.core.queue.ChunkCoordinator;
 import com.plotsquared.core.queue.LocalChunk;
 import com.plotsquared.core.util.ChunkUtil;
+import com.plotsquared.fabric.util.FabricUtil;
 import com.sk89q.jnbt.CompoundTag;
 import com.sk89q.worldedit.WorldEditException;
 import com.sk89q.worldedit.extent.clipboard.BlockArrayClipboard;
@@ -22,6 +23,9 @@ import com.sk89q.worldedit.world.World;
 import com.sk89q.worldedit.world.biome.BiomeType;
 import com.sk89q.worldedit.world.block.BaseBlock;
 import com.sk89q.worldedit.world.block.BlockState;
+import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.block.Block;
 import org.checkerframework.checker.nullness.qual.NonNull;
 
 import java.util.ArrayList;
@@ -51,7 +55,7 @@ public class FabricQueueCoordinator extends BasicQueueCoordinator {
         );
     }
 
-    private org.bukkit.World bukkitWorld;
+    private ServerLevel fabricWorld;
     @Inject
     private ChunkCoordinatorBuilderFactory chunkCoordinatorBuilderFactory;
     @Inject
@@ -59,14 +63,14 @@ public class FabricQueueCoordinator extends BasicQueueCoordinator {
     private ChunkCoordinator chunkCoordinator;
 
     @Inject
-    public BukkitQueueCoordinator(@NonNull World world) {
+    public FabricQueueCoordinator(@NonNull World world) {
         super(world);
     }
 
     @Override
     public BlockState getBlock(int x, int y, int z) {
-        Block block = getBukkitWorld().getBlockAt(x, y, z);
-        return BukkitBlockUtil.get(block);
+        Block block = getFabricWorld().getBlockState(new BlockPos(x, y, z)).getBlock();
+        return FabricBlockUtil.get(block);
     }
 
     @Override
@@ -266,9 +270,9 @@ public class FabricQueueCoordinator extends BasicQueueCoordinator {
         }
     }
 
-    private org.bukkit.World getBukkitWorld() {
+    private ServerLevel getFabricWorld() {
         if (bukkitWorld == null) {
-            bukkitWorld = Bukkit.getWorld(getWorld().getName());
+            bukkitWorld = FabricUtil.getWorld(getWorld().getName());
         }
         return bukkitWorld;
     }

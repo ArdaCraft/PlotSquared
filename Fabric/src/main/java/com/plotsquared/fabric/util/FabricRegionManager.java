@@ -17,14 +17,25 @@ import com.plotsquared.core.util.RegionManager;
 import com.plotsquared.core.util.WorldUtil;
 import com.plotsquared.core.util.entity.EntityCategories;
 import com.plotsquared.core.util.task.RunnableVal;
+import com.sk89q.worldedit.fabric.FabricAdapter;
+import com.sk89q.worldedit.fabric.FabricWorld;
 import com.sk89q.worldedit.regions.CuboidRegion;
 import com.sk89q.worldedit.world.block.BaseBlock;
 import com.sk89q.worldedit.world.block.BlockTypes;
+import com.sk89q.worldedit.world.entity.EntityTypes;
+import net.minecraft.core.GlobalPos;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.phys.AABB;
+import org.apache.commons.compress.utils.Lists;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
@@ -34,13 +45,14 @@ import static com.plotsquared.core.util.entity.EntityCategories.CAP_MISC;
 import static com.plotsquared.core.util.entity.EntityCategories.CAP_MOB;
 import static com.plotsquared.core.util.entity.EntityCategories.CAP_MONSTER;
 import static com.plotsquared.core.util.entity.EntityCategories.CAP_VEHICLE;
+import static com.plotsquared.fabric.util.FabricUtil.getWorld;
 
 public class FabricRegionManager extends RegionManager {
 
     private final GlobalBlockQueue blockQueue;
 
     @Inject
-    public BukkitRegionManager(
+    public FabricRegionManager(
             @NonNull WorldUtil worldUtil, @NonNull GlobalBlockQueue blockQueue, @NonNull
     ProgressSubscriberFactory subscriberFactory
     ) {
@@ -65,7 +77,7 @@ public class FabricRegionManager extends RegionManager {
             return existing;
         }
         PlotArea area = plot.getArea();
-        World world = BukkitUtil.getWorld(area.getWorldName());
+        ServerLevel world = getWorld(area.getWorldName());
         Location bot = plot.getBottomAbs();
         Location top = plot.getTopAbs();
         int bx = bot.getX() >> 4;
@@ -76,11 +88,11 @@ public class FabricRegionManager extends RegionManager {
 
         int size = tx - bx << 4;
 
-        Set<Chunk> chunks = new HashSet<>();
+        Set<LevelChunk> chunks = new HashSet<>();
         for (int X = bx; X <= tx; X++) {
             for (int Z = bz; Z <= tz; Z++) {
-                if (world.isChunkLoaded(X, Z)) {
-                    chunks.add(world.getChunkAt(X, Z));
+                if (world.getChunkSource().hasChunk(X, Z)) {
+                    chunks.add(world.getChunk(X, Z));
                 }
             }
         }
@@ -88,7 +100,7 @@ public class FabricRegionManager extends RegionManager {
         boolean doWhole = false;
         List<Entity> entities = null;
         if (size > 200 && chunks.size() > 200) {
-            entities = world.getEntities();
+            entities = Lists.newArrayList(world.getAllEntities().iterator());
             if (entities.size() < 16 + size / 8) {
                 doWhole = true;
             }
@@ -97,30 +109,33 @@ public class FabricRegionManager extends RegionManager {
         int[] count = new int[6];
         if (doWhole) {
             for (Entity entity : entities) {
-                org.bukkit.Location location = entity.getLocation();
-                PaperLib.getChunkAtAsync(location).thenAccept(chunk -> {
-                    if (chunks.contains(chunk)) {
-                        int X = chunk.getX();
-                        int Z = chunk.getZ();
-                        if (X > bx && X < tx && Z > bz && Z < tz) {
+                GlobalPos location = GlobalPos.of(entity.level().dimension(), entity.blockPosition());
+                LevelChunk chunk = world.getChunkAt(entity.blockPosition());
+                if (chunks.contains(chunk)) {
+                    int X = chunk.getPos().x;
+                    int Z = chunk.getPos().z;
+                    if (X > bx && X < tx && Z > bz && Z < tz) {
+                        count(count, entity);
+                    } else {
+                        Plot other = area.getPlot(FabricUtil.adapt(location));
+                        if (plot.equals(other)) {
                             count(count, entity);
-                        } else {
-                            Plot other = area.getPlot(BukkitUtil.adapt(location));
-                            if (plot.equals(other)) {
-                                count(count, entity);
-                            }
                         }
                     }
-                });
+                }
+
             }
         } else {
-            for (Chunk chunk : chunks) {
-                int X = chunk.getX();
-                int Z = chunk.getZ();
-                Entity[] entities1 = chunk.getEntities();
+            for (LevelChunk chunk : chunks) {
+                int X = chunk.getPos().x;
+                int Z = chunk.getPos().z;
+                Entity[] entities1 = getEntitiesInCHunk(world, chunk).toArray(new Entity[0]);
                 for (Entity entity : entities1) {
                     if (X == bx || X == tx || Z == bz || Z == tz) {
-                        Plot other = area.getPlot(BukkitUtil.adapt(entity.getLocation()));
+                        Plot other = area.getPlot(FabricUtil.adapt(GlobalPos.of(
+                                entity.level().dimension(),
+                                entity.blockPosition()
+                        )));
                         if (plot.equals(other)) {
                             count(count, entity);
                         }
@@ -133,6 +148,16 @@ public class FabricRegionManager extends RegionManager {
         return count;
     }
 
+    public List<Entity> getEntitiesInCHunk(ServerLevel world, LevelChunk chunk) {
+        return world.getEntitiesOfClass(
+                Entity.class,
+                new AABB(chunk.getPos().getMinBlockX(), chunk.getMaxBuildHeight(), chunk.getPos().getMinBlockZ(),
+                        chunk.getPos().getMaxBlockX(), chunk.getMaxBuildHeight(), chunk.getPos().getMaxBlockZ()
+                ),
+                entity -> true
+        );
+    }
+
     @Override
     public boolean regenerateRegion(
             final @NonNull Location pos1,
@@ -140,7 +165,7 @@ public class FabricRegionManager extends RegionManager {
             final boolean ignoreAugment,
             final @Nullable Runnable whenDone
     ) {
-        final BukkitWorld world = (BukkitWorld) worldUtil.getWeWorld(pos1.getWorldName());
+        final FabricWorld world = (FabricWorld) worldUtil.getWeWorld(pos1.getWorldName());
 
         final int p1x = pos1.getX();
         final int p1z = pos1.getZ();
@@ -226,7 +251,7 @@ public class FabricRegionManager extends RegionManager {
                 map.saveRegion(world, xxt2, xxt, zzt2, zzt); //
             }
             CuboidRegion currentPlotClear = new CuboidRegion(pos1.getBlockVector3(), pos2.getBlockVector3());
-            map.saveEntitiesOut(Bukkit.getWorld(world.getName()).getChunkAt(x, z), currentPlotClear);
+            map.saveEntitiesOut(getWorld(world.getName()).getChunk(x,z), currentPlotClear);
             AugmentedUtils.bypass(
                     ignoreAugment,
                     () -> ChunkManager.setChunkInPlotArea(null, new RunnableVal<ZeroedDelegateScopedQueueCoordinator>() {
@@ -257,7 +282,7 @@ public class FabricRegionManager extends RegionManager {
                     }, world.getName(), chunk)
             );
             //map.restoreBlocks(worldObj, 0, 0);
-            map.restoreEntities(Bukkit.getWorld(world.getName()));
+            map.restoreEntities(getWorld(world.getName()));
         });
         regenQueue.setCompleteTask(whenDone);
         queue.setCompleteTask(regenQueue::enqueue);
@@ -269,10 +294,10 @@ public class FabricRegionManager extends RegionManager {
     public void clearAllEntities(@NonNull Location pos1, @NonNull Location pos2) {
         String world = pos1.getWorldName();
 
-        final World bukkitWorld = BukkitUtil.getWorld(world);
+        final ServerLevel fabricWorld = getWorld(world);
         final List<Entity> entities;
-        if (bukkitWorld != null) {
-            entities = new ArrayList<>(bukkitWorld.getEntities());
+        if (fabricWorld != null) {
+            entities = Lists.newArrayList(fabricWorld.getAllEntities().iterator());
         } else {
             entities = new ArrayList<>();
         }
@@ -282,20 +307,20 @@ public class FabricRegionManager extends RegionManager {
         int tx = pos2.getX();
         int tz = pos2.getZ();
         for (Entity entity : entities) {
-            if (!(entity instanceof Player)) {
-                org.bukkit.Location location = entity.getLocation();
-                if (location.getX() >= bx && location.getX() <= tx && location.getZ() >= bz && location.getZ() <= tz) {
-                    if (entity.hasMetadata("ps-tmp-teleport")) {
+            if (!(entity instanceof ServerPlayer)) {
+                GlobalPos location = GlobalPos.of(entity.level().dimension(), entity.blockPosition());
+                if (location.pos().getX() >= bx && location.pos().getX() <= tx && location.pos().getZ() >= bz && location.pos().getZ() <= tz) {
+                    if (entity.hasAttached("ps-tmp-teleport")) {
                         continue;
                     }
-                    entity.remove();
+                    entity.remove(Entity.RemovalReason.DISCARDED);
                 }
             }
         }
     }
 
     private void count(int[] count, @NonNull Entity entity) {
-        final com.sk89q.worldedit.world.entity.EntityType entityType = BukkitAdapter.adapt(entity.getType());
+        final com.sk89q.worldedit.world.entity.EntityType entityType = EntityTypes.get(entity.getType().toString());
 
         if (EntityCategories.PLAYER.contains(entityType)) {
             return;

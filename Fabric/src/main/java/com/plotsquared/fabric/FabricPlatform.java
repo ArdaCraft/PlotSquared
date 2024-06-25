@@ -18,12 +18,12 @@
  */
 package com.plotsquared.fabric;
 
-import com.google.common.reflect.ClassPath;
 import com.google.inject.Guice;
 import com.google.inject.Inject;
 import com.google.inject.Injector;
 import com.google.inject.Key;
 import com.google.inject.Stage;
+import com.mojang.brigadier.arguments.StringArgumentType;
 import com.plotsquared.core.PlotPlatform;
 import com.plotsquared.core.PlotSquared;
 import com.plotsquared.core.backup.BackupManager;
@@ -33,7 +33,6 @@ import com.plotsquared.core.configuration.ConfigurationSection;
 import com.plotsquared.core.configuration.ConfigurationUtil;
 import com.plotsquared.core.configuration.Settings;
 import com.plotsquared.core.configuration.Storage;
-import com.plotsquared.core.configuration.caption.ChatFormatter;
 import com.plotsquared.core.configuration.caption.TranslatableCaption;
 import com.plotsquared.core.configuration.file.YamlConfiguration;
 import com.plotsquared.core.database.DBFunc;
@@ -83,10 +82,18 @@ import com.plotsquared.fabric.inject.BackupModule;
 import com.plotsquared.fabric.inject.FabricModule;
 import com.plotsquared.fabric.inject.PermissionModule;
 import com.plotsquared.fabric.inject.WorldManagerModule;
-import com.plotsquared.fabric.listener.ServerListener;
+import com.plotsquared.fabric.listener.BlockEventListener;
+import com.plotsquared.fabric.listener.BlockEventListener117;
+import com.plotsquared.fabric.listener.ChunkListener;
+import com.plotsquared.fabric.listener.EntityEventListener;
+import com.plotsquared.fabric.listener.EntitySpawnListener;
+import com.plotsquared.fabric.listener.HighFreqBlockEventListener;
+import com.plotsquared.fabric.listener.PlayerEventListener;
+import com.plotsquared.fabric.listener.PlayerEventListener1201;
+import com.plotsquared.fabric.listener.ProjectileEventListener;
 import com.plotsquared.fabric.listener.SingleWorldListener;
+import com.plotsquared.fabric.listener.WorldEvents;
 import com.plotsquared.fabric.placeholder.MiniPlaceholders;
-import com.plotsquared.fabric.placeholder.PlaceholderFormatter;
 import com.plotsquared.fabric.util.FabricTimeConverter;
 import com.plotsquared.fabric.util.FabricUtil;
 import com.plotsquared.fabric.util.TranslationUpdateManager;
@@ -97,30 +104,18 @@ import com.plotsquared.fabric.uuid.SQLiteUUIDService;
 import com.plotsquared.fabric.uuid.SquirrelIdUUIDService;
 import com.sk89q.worldedit.WorldEdit;
 import net.fabricmc.api.ModInitializer;
-import net.fabricmc.fabric.api.attachment.v1.AttachmentRegistry;
-import net.fabricmc.fabric.api.biome.v1.BiomeModification;
-import net.fabricmc.fabric.api.biome.v1.BiomeModifications;
-import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
+import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
-import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
-import net.fabricmc.fabric.impl.biome.BiomeSourceAccess;
 import net.fabricmc.loader.api.FabricLoader;
-import net.fabricmc.loader.impl.discovery.ClasspathModCandidateFinder;
 import net.kyori.adventure.audience.Audience;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
-import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.commands.Commands;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.util.profiling.jfr.event.ChunkGenerationEvent;
-import net.minecraft.world.level.biome.BiomeGenerationSettings;
-import net.minecraft.world.level.biome.BiomeManager;
-import net.minecraft.world.level.biome.BiomeSource;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.chunk.ChunkGenerator;
-import org.apache.commons.lang3.ClassLoaderUtils;
-import org.apache.commons.lang3.ClassPathUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.checkerframework.checker.nullness.qual.NonNull;
@@ -131,7 +126,6 @@ import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -148,9 +142,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
-import static com.plotsquared.core.util.PremiumVerification.getDownloadID;
-import static com.plotsquared.core.util.PremiumVerification.getResourceID;
-import static com.plotsquared.core.util.PremiumVerification.getUserID;
 import static com.plotsquared.core.util.ReflectionUtils.getRefClass;
 
 public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer> {
@@ -170,7 +161,7 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
     private Method methodUnloadChunk0;
     private boolean methodUnloadSetup = false;
     private boolean metricsStarted;
-    private boolean faweHook = false;
+    private boolean faweHook = true;
 
     private Injector injector;
 
@@ -201,7 +192,6 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
     private Locale serverLocale;
 
     public static MinecraftServer SERVER;
-
 
 
     @SuppressWarnings("StringSplitter")
@@ -242,6 +232,10 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
     @Override
     @SuppressWarnings("deprecation") // Paper deprecation
     public void onInitialize() {
+        ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
+            onDisable();
+        });
+
         this.pluginName = "plotsquared-fabric";
 
         final TaskTime.TimeConverter timeConverter;
@@ -252,7 +246,6 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
         TaskManager.setPlatformImplementation(new FabricTaskManager(this, timeConverter));
 
         ServerTickEvents.START_SERVER_TICK.register(FabricTaskManager.fabricTickListener::OnServerTick);
-
 
 
         final PlotSquared plotSquared = new PlotSquared(this, "Bukkit");
@@ -352,33 +345,18 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
         }
 
         if (Settings.Enabled_Components.EVENTS) {
-            getServer().getPluginManager().registerEvents(injector().getInstance(PlayerEventListener.class), this);
-            if ((serverVersion()[1] == 20 && serverVersion()[2] >= 1) || serverVersion()[1] > 20) {
-                getServer().getPluginManager().registerEvents(injector().getInstance(PlayerEventListener1201.class), this);
-            }
-
-
-
-
-            getServer().getPluginManager().registerEvents(injector().getInstance(BlockEventListener.class), this);
-
-            PlayerBlockBreakEvents.BEFORE.register((world, player, pos, state, blockEntity) -> {
-
-            });
-
-
+            PlayerEventListener playerEventListener = injector.getInstance(PlayerEventListener.class);
+            PlayerEventListener1201 playerEventListener1201 = injector.getInstance(PlayerEventListener1201.class);
+            BlockEventListener blockEventListener = injector.getInstance(BlockEventListener.class);
             if (Settings.HIGH_FREQUENCY_LISTENER) {
-                getServer().getPluginManager().registerEvents(injector().getInstance(HighFreqBlockEventListener.class), this);
+                HighFreqBlockEventListener highFreqBlockEventListener = injector.getInstance(HighFreqBlockEventListener.class);
             }
-            if (serverVersion()[1] >= 17) {
-                getServer().getPluginManager().registerEvents(injector().getInstance(BlockEventListener117.class), this);
-            }
-            getServer().getPluginManager().registerEvents(injector().getInstance(EntityEventListener.class), this);
-            getServer().getPluginManager().registerEvents(injector().getInstance(ProjectileEventListener.class), this);
+            BlockEventListener117 blockEventListener117 = injector.getInstance(BlockEventListener117.class);
+            EntityEventListener entityEventListener = injector.getInstance(EntityEventListener.class);
+            ProjectileEventListener projectileEventListener = injector.getInstance(ProjectileEventListener.class);
 
 
             //getServer().getPluginManager().registerEvents(injector().getInstance(ServerListener.class), this);
-
             ServerLifecycleEvents.SERVER_STARTED.register(server -> {
                 if (FabricLoader.getInstance().isModLoaded("miniplaceholders")
                     /*&& Settings.Enabled_Components.USE_MINIPLACEHOLDERS*/) {
@@ -387,7 +365,8 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
                 }
             });
 
-            getServer().getPluginManager().registerEvents(injector().getInstance(EntitySpawnListener.class), this);
+            EntitySpawnListener entitySpawnListener = injector.getInstance(EntitySpawnListener.class);
+
             if (PaperLib.isPaper() && Settings.Paper_Components.PAPER_LISTENERS) {
                 getServer().getPluginManager().registerEvents(injector().getInstance(PaperListener.class), this);
             } else {
@@ -397,9 +376,9 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
         }
 
         // Required
-        getServer().getPluginManager().registerEvents(injector().getInstance(WorldEvents.class), this);
+        WorldEvents worldEvents = injector.getInstance(WorldEvents.class);
         if (Settings.Enabled_Components.CHUNK_PROCESSOR) {
-            getServer().getPluginManager().registerEvents(injector().getInstance(ChunkListener.class), this);
+            ChunkListener chunkListener = injector.getInstance(ChunkListener.class);
         }
 
         // Commands
@@ -500,25 +479,8 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
         } else {
             luckPermsUUIDService = null;
         }
-/*
-        final EssentialsUUIDService essentialsUUIDService;
-        if (Settings.UUID.SERVICE_ESSENTIALSX && Bukkit.getPluginManager().getPlugin("Essentials") != null) {
-            essentialsUUIDService = new EssentialsUUIDService();
-            LOGGER.info("(UUID) Using EssentialsX as a complementary UUID service");
-        } else {
-            essentialsUUIDService = null;
-        }
-*/
+
         if (!Settings.UUID.OFFLINE) {
-            // If running Paper we'll also try to use their profiles
-            /*
-            if (Bukkit.getOnlineMode() && PaperLib.isPaper() && Settings.UUID.SERVICE_PAPER) {
-                final PaperUUIDService paperUUIDService = new PaperUUIDService();
-                this.impromptuPipeline.registerService(paperUUIDService);
-                this.backgroundPipeline.registerService(paperUUIDService);
-                LOGGER.info("(UUID) Using Paper as a complementary UUID service");
-            }
-*/
             this.impromptuPipeline.registerService(sqLiteUUIDService);
             this.backgroundPipeline.registerService(sqLiteUUIDService);
             this.impromptuPipeline.registerConsumer(sqLiteUUIDService);
@@ -534,12 +496,6 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
                 this.impromptuPipeline.registerService(luckPermsUUIDService);
                 this.backgroundPipeline.registerService(luckPermsUUIDService);
             }
-            /*
-            if (essentialsUUIDService != null) {
-                this.impromptuPipeline.registerService(essentialsUUIDService);
-                this.backgroundPipeline.registerService(essentialsUUIDService);
-            }
-*/
             if (Settings.UUID.IMPROMPTU_SERVICE_MOJANG_API) {
                 final SquirrelIdUUIDService impromptuMojangService = new SquirrelIdUUIDService(Settings.UUID.IMPROMPTU_LIMIT);
                 this.impromptuPipeline.registerService(impromptuMojangService);
@@ -564,38 +520,32 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
             this.startUuidCaching(sqLiteUUIDService, cacheUUIDService);
         }
 
-        if (FabricLoader.getInstance().isModLoaded("miniplaceholders")) {
-            injector.getInstance(PAPIPlaceholders.class).register();
-            if (Settings.Enabled_Components.EXTERNAL_PLACEHOLDERS) {
-                ChatFormatter.formatters.add(injector().getInstance(PlaceholderFormatter.class));
-            }
-            LOGGER.info("PlotSquared hooked into MiniPlaceholders");
-        }
-
         this.startMetrics();
 
         if (Settings.Enabled_Components.WORLDS) {
             TaskManager.getPlatformImplementation().taskRepeat(this::unload, TaskTime.seconds(10L));
             try {
                 singleWorldListener = injector().getInstance(SingleWorldListener.class);
-                Bukkit.getPluginManager().registerEvents(singleWorldListener, this);
             } catch (Exception e) {
                 e.printStackTrace();
             }
         }
 
         // Clean up potential memory leak
-        Bukkit.getScheduler().runTaskTimer(this, () -> {
+
+
+        /* TODO CONNECTION CHECK POSSIBLE ISSUE */
+        FabricTaskManager.runTaskRepeat(() -> {
             try {
                 for (final PlotPlayer<? extends Player> player : this.playerManager().getPlayers()) {
-                    if (player.getPlatformPlayer() == null || !player.getPlatformPlayer().isOnline()) {
+                    if (player.getPlatformPlayer() == null || !player.getPlatformPlayer().getServer().getPlayerList().getPlayer(player.getUUID()).connection.isAcceptingMessages()) {
                         this.playerManager().removePlayer(player);
                     }
                 }
             } catch (final Exception e) {
-                getLogger().warning("Failed to clean up players: " + e.getMessage());
+                FabricPlatform.LOGGER.warn("Failed to clean up players: " + e.getMessage());
             }
-        }, 100L, 100L);
+        }, TaskTime.seconds(100L));
 
         // Check if we are in a safe environment
         ServerLib.checkUnsafeForks();
@@ -750,30 +700,39 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
         }, 10, TimeUnit.SECONDS);
     }
 
-    @Override
+
     public void onDisable() {
         PlotSquared.get().disable();
-        Bukkit.getScheduler().cancelTasks(this);
     }
 
     @Override
     public void shutdown() {
-        this.getServer().getPluginManager().disablePlugin(this);
+        LOGGER.error("THERE HAS BEEN AN ISSUE WITH PLOTSQUARED. PLEASE CONTACT JAYEMCEEKAY ON DISCORD.");
     }
 
     @Override
     public void shutdownServer() {
-        getServer().shutdown();
+        LOGGER.error("PLOTSQUARED FAILED TO LOAD CORRECTLY");
     }
 
     private void registerCommands() {
-        final BukkitCommand bukkitCommand = new BukkitCommand();
-        final PluginCommand plotCommand = getCommand("plots");
-        if (plotCommand != null) {
-            plotCommand.setExecutor(bukkitCommand);
-            plotCommand.setAliases(Arrays.asList("p", "ps", "plotme", "plot"));
-            plotCommand.setTabCompleter(bukkitCommand);
-        }
+        final FabricCommand fabricCommand = new FabricCommand();
+        CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
+            dispatcher.register(Commands
+                    .literal("plots")
+                    .then(Commands.argument("args", StringArgumentType.greedyString()).suggests((context, builder) -> {
+                        fabricCommand.onTabComplete(context.getSource(), context.getCommand(), context.getRootNode().getName(),
+                                context.getArgument("args", String.class).split(" ")
+                        ).forEach(builder::suggest);
+                        return builder.buildFuture();
+                    }))
+                    .executes(context -> {
+                        fabricCommand.onCommand(context.getSource(), context.getCommand(), context.getRootNode().getName(),
+                                context.getArgument("args", String.class).split(" ")
+                        );
+                        return 0;
+                    }));
+        });
     }
 
     @Override
@@ -799,7 +758,9 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
                 while (iterator.hasNext()) {
                     Entity entity = iterator.next();
                     //noinspection ConstantValue - getEntitySpawnReason annotated as NotNull, but is not NotNull. lol.
-                    if (PaperLib.isPaper() && entity.getEntitySpawnReason() != null && "CUSTOM".equals(entity.getEntitySpawnReason().name())) {
+                    if (PaperLib.isPaper() && entity.getEntitySpawnReason() != null && "CUSTOM".equals(entity
+                            .getEntitySpawnReason()
+                            .name())) {
                         continue;
                     }
                     // Fallback for Spigot not having Entity#getEntitySpawnReason

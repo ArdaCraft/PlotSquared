@@ -20,6 +20,7 @@ package com.plotsquared.fabric.listener;
 
 import com.google.common.base.Charsets;
 import com.google.inject.Inject;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.plotsquared.core.PlotSquared;
 import com.plotsquared.core.configuration.Settings;
 import com.plotsquared.core.configuration.caption.Caption;
@@ -68,65 +69,134 @@ import com.plotsquared.core.util.PlotFlagUtil;
 import com.plotsquared.core.util.entity.EntityCategories;
 import com.plotsquared.core.util.task.TaskManager;
 import com.plotsquared.core.util.task.TaskTime;
+import com.plotsquared.fabric.listener.event.BaseFireBlockOnPlaceCallback;
+import com.plotsquared.fabric.listener.event.EmptyContentsCallback;
+import com.plotsquared.fabric.listener.event.EntityHandleInsidePortalCallback;
+import com.plotsquared.fabric.listener.event.HandleContainerCloseCallback;
 import com.plotsquared.fabric.listener.event.HandleMoveVehicleCallback;
 import com.plotsquared.fabric.listener.event.HandlePlayerMoveCallback;
+import com.plotsquared.fabric.listener.event.LecternTakeButtonCallback;
 import com.plotsquared.fabric.listener.event.ServerPlayerTeleportToCallback;
+import com.plotsquared.fabric.listener.mixin.EntityMixin;
 import com.plotsquared.fabric.player.FabricPlayer;
+import com.plotsquared.fabric.util.FabricEntityUtil;
 import com.plotsquared.fabric.util.FabricUtil;
 import com.sk89q.worldedit.WorldEdit;
+import com.sk89q.worldedit.fabric.FabricAdapter;
 import com.sk89q.worldedit.world.block.BlockType;
 import com.sk89q.worldedit.world.entity.EntityType;
 import com.sk89q.worldedit.world.entity.EntityTypes;
+import net.fabricmc.fabric.api.dimension.v1.FabricDimensions;
 import net.fabricmc.fabric.api.entity.event.v1.ServerEntityWorldChangeEvents;
+import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.fabricmc.fabric.api.networking.v1.ServerLoginConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
+import net.fabricmc.fabric.api.tag.convention.v1.TagUtil;
+import net.fabricmc.fabric.impl.dimension.FabricDimensionInternals;
+import net.fabricmc.fabric.mixin.event.interaction.ServerPlayerInteractionManagerMixin;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.minimessage.tag.Tag;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 import net.kyori.adventure.text.minimessage.tag.standard.StandardTags;
+import net.minecraft.client.gui.screens.inventory.LecternScreen;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.StringTag;
+import net.minecraft.network.protocol.game.ServerboundContainerButtonClickPacket;
+import net.minecraft.network.protocol.game.ServerboundContainerClosePacket;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerEntity;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.ServerPlayerGameMode;
+import net.minecraft.server.network.ServerGamePacketListenerImpl;
+import net.minecraft.server.network.ServerLoginPacketListenerImpl;
+import net.minecraft.tags.ItemTags;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.InteractionResultHolder;
+import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.OwnableEntity;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.decoration.ItemFrame;
+import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Inventory;
-import net.minecraft.world.entity.vehicle.Boat;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.BucketItem;
 import net.minecraft.world.item.DyeItem;
+import net.minecraft.world.item.FireworkRocketItem;
+import net.minecraft.world.item.FireworkStarItem;
+import net.minecraft.world.item.FlintAndSteelItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.SpawnEggItem;
+import net.minecraft.world.item.context.UseOnContext;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LevelAccessor;
+import net.minecraft.world.level.block.BaseFireBlock;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.EndGatewayBlock;
+import net.minecraft.world.level.block.EndPortalBlock;
+import net.minecraft.world.level.block.FireBlock;
 import net.minecraft.world.level.block.SignBlock;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.TheEndGatewayBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.pattern.BlockInWorld;
+import net.minecraft.world.level.block.state.pattern.BlockPattern;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.level.gameevent.GameEvent;
+import net.minecraft.world.level.gameevent.GameEventDispatcher;
+import net.minecraft.world.level.portal.PortalForcer;
+import net.minecraft.world.level.portal.PortalInfo;
+import net.minecraft.world.level.portal.PortalShape;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import org.checkerframework.checker.nullness.qual.NonNull;
+import org.jetbrains.annotations.Nullable;
 import xyz.nucleoid.stimuli.Stimuli;
 import xyz.nucleoid.stimuli.event.block.BlockDropItemsEvent;
+import xyz.nucleoid.stimuli.event.block.BlockTrampleEvent;
+import xyz.nucleoid.stimuli.event.block.BlockUseEvent;
+import xyz.nucleoid.stimuli.event.entity.EntityDeathEvent;
+import xyz.nucleoid.stimuli.event.entity.EntitySpawnEvent;
 import xyz.nucleoid.stimuli.event.entity.EntityUseEvent;
+import xyz.nucleoid.stimuli.event.item.ItemPickupEvent;
+import xyz.nucleoid.stimuli.event.item.ItemThrowEvent;
 import xyz.nucleoid.stimuli.event.player.PlayerChatEvent;
 import xyz.nucleoid.stimuli.event.player.PlayerCommandEvent;
 import xyz.nucleoid.stimuli.event.player.PlayerInventoryActionEvent;
+import xyz.nucleoid.stimuli.event.world.EndPortalOpenEvent;
+import xyz.nucleoid.stimuli.event.world.NetherPortalOpenEvent;
+import xyz.nucleoid.stimuli.mixin.world.EnderEyeItemMixin;
+import xyz.nucleoid.stimuli.mixin.world.NetherPortalMixin;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -211,142 +281,38 @@ public class PlayerEventListener {
         this.plotAreaManager = plotAreaManager;
         this.plotListener = plotListener;
 
-
-        PlayerBlockBreakEvents.AFTER.register((world, player, pos, state, entity) -> {
-            Location location = FabricUtil.adapt(GlobalPos.of(world.dimension(), pos));
+        Stimuli.global().listen(ItemThrowEvent.EVENT, this::onItemDrop);
+        Stimuli.global().listen(ItemPickupEvent.EVENT, this::onItemPickup);
+        Stimuli.global().listen(BlockTrampleEvent.EVENT, this::onTrample);
+        EmptyContentsCallback.EVENT.register(this::onBucketEmpty);
+        UseBlockCallback.EVENT.register(this::onBucketFill);
+        HandleContainerCloseCallback.EVENT.register(this::onInventoryClose);
+        ServerPlayerEvents.AFTER_RESPAWN.register(this::onDeath);
+        PlayerBlockBreakEvents.AFTER.register(this::afterBlockBreak);
+        UseBlockCallback.EVENT.register(PlayerEventListener::interact);
+        Stimuli.global().listen(PlayerCommandEvent.EVENT, PlayerEventListener::onPlayerCommand);
+        ServerLoginConnectionEvents.INIT.register(PlayerEventListener::onLoginInit);
+        Stimuli.global().listen(BlockUseEvent.EVENT, this::onHangingPlace);
+        Stimuli.global().listen(EntitySpawnEvent.EVENT, entity -> {
+            Location location = FabricUtil.adapt(GlobalPos.of(entity.level().dimension(), entity.blockPosition()));
             PlotArea area = location.getPlotArea();
             if (area == null) {
-                return;
-            }
-            Plot plot = area.getPlot(location);
-            if (plot != null) {
-                Stimuli.global().listen(BlockDropItemsEvent.EVENT, (entity1, serverLevel, blockPos, blockState, list) -> {
-                    if (plot.getFlag(TileDropFlag.class)) {
-                        return InteractionResultHolder.pass(list);
-                    }
-                    return InteractionResultHolder.fail(list);
-                });
-            }
-        });
-
-        UseBlockCallback.EVENT.register((player, world, hand, hitResult) -> {
-            boolean cancelled = false;
-            ItemStack itemStack = player.getItemInHand(hand);
-            BlockState blockstate = world.getBlockState(hitResult.getBlockPos());
-            Block block = blockstate.getBlock();
-            if (block instanceof SignBlock) {
-                if (/*DYES.contains(itemStack.getItem().toString())*/itemStack.getItem() instanceof DyeItem) {
-                    Location location = FabricUtil.adapt(GlobalPos.of(world.dimension(), hitResult.getBlockPos()));
-                    PlotArea area = location.getPlotArea();
-                    if (area == null) {
-                        return InteractionResult.FAIL;
-                    }
-                    Plot plot = location.getOwnedPlot();
-                    ServerPlayer serverPlayer = player.getServer().getPlayerList().getPlayer(player.getUUID());
-                    if (plot == null) {
-                        if (PlotFlagUtil.isAreaRoadFlagsAndFlagEquals(area, EditSignFlag.class, false)
-                                && !FabricUtil
-                                .adapt(serverPlayer)
-                                .hasPermission(Permission.PERMISSION_ADMIN_INTERACT_ROAD.toString())) {
-                            cancelled = true;
-                        }
-                        return cancelled ? InteractionResult.FAIL : InteractionResult.PASS;
-                    }
-                    if (plot.isAdded(player.getUUID())) {
-                        return InteractionResult.PASS; // allow for added players
-                    }
-                    if (!plot.getFlag(EditSignFlag.class)
-                            && !FabricUtil
-                            .adapt(serverPlayer)
-                            .hasPermission(Permission.PERMISSION_ADMIN_INTERACT_OTHER.toString())) {
-                        plot.debug(player.getName() + " could not color the sign because of edit-sign = false");
-                        cancelled = true;
-                    }
-                }
-            }
-            return cancelled ? InteractionResult.FAIL : InteractionResult.PASS;
-        });
-
-        Stimuli.global().listen(PlayerCommandEvent.EVENT, (serverPlayer, s) -> {
-            String msg = s.replace("/", "").toLowerCase(Locale.ROOT).trim();
-            if (msg.isEmpty()) {
                 return InteractionResult.PASS;
             }
-            ServerPlayer player = serverPlayer;
-            PlotPlayer<ServerPlayer> plotPlayer = FabricUtil.adapt(player);
-            Location location = plotPlayer.getLocation();
-            PlotArea area = location.getPlotArea();
-            if (area == null) {
+            EntitySpawnListener.testNether(entity);
+            Plot plot = location.getPlotAbs();
+            if (FabricEntityUtil.checkEntity(entity, plot)) {
                 return InteractionResult.FAIL;
-            }
-            String[] parts = msg.split(" ");
-            Plot plot = plotPlayer.getCurrentPlot();
-            // Check WorldEdit
-            switch (parts[0]) {
-                case "up", "worldedit:up" -> {
-                    if (plot == null || (!plot.isAdded(plotPlayer.getUUID()) && !plotPlayer.hasPermission(
-                            Permission.PERMISSION_ADMIN_BUILD_OTHER,
-                            true
-                    ))) {
-                        return InteractionResult.FAIL;
-                    }
-                }
-            }
-            if (plot == null && !area.isRoadFlags()) {
-                return InteractionResult.PASS;
-            }
-
-            List<String> blockedCommands = plot != null ?
-                    plot.getFlag(BlockedCmdsFlag.class) :
-                    area.getFlag(BlockedCmdsFlag.class);
-            if (blockedCommands.isEmpty()) {
-                return InteractionResult.PASS;
-            }
-            if (plotPlayer.hasPermission(Permission.PERMISSION_ADMIN_INTERACT_BLOCKED_CMDS)) {
-                return InteractionResult.PASS;
-            }
-            // When using namespaced commands, we're not interested in the namespace
-            /*
-            String part = parts[0];
-            if (part.contains(":")) {
-                String[] namespaced = part.split(":");
-                part = namespaced[1];
-                msg = msg.substring(namespaced[0].length() + 1);
-            }
-            msg = replaceAliases(msg, part);*/
-            for (String blocked : blockedCommands) {
-                if (blocked.equalsIgnoreCase(msg)) {
-                    String perm;
-                    if (plot != null && plot.isAdded(plotPlayer.getUUID())) {
-                        perm = "plots.admin.command.blocked-cmds.shared";
-                    } else {
-                        perm = "plots.admin.command.blocked-cmds.road";
-                    }
-                    if (!plotPlayer.hasPermission(perm)) {
-                        plotPlayer.sendMessage(TranslatableCaption.of("blockedcmds.command_blocked"));
-                        return InteractionResult.FAIL;
-                    }
-                    return InteractionResult.PASS;
-                }
             }
             return InteractionResult.PASS;
         });
-
-        ServerLoginConnectionEvents.INIT.register((handler, server) -> {
-            final UUID uuid;
-            if (Settings.UUID.OFFLINE) {
-                if (Settings.UUID.FORCE_LOWERCASE) {
-                    uuid = UUID.nameUUIDFromBytes(("OfflinePlayer:" + handler
-                            .getUserName()
-                            .toLowerCase()).getBytes(Charsets.UTF_8));
-                } else {
-                    uuid = UUID.nameUUIDFromBytes(("OfflinePlayer:" + handler.getUserName()).getBytes(Charsets.UTF_8));
-                }
-            } else {
-                uuid = server.getProfileCache().get(handler.getUserName()).get().getId();
-            }
-            PlotSquared.get().getImpromptuUUIDPipeline().storeImmediately(handler.getUserName(), uuid);
-        });
+        Stimuli.global().listen(EntityDeathEvent.EVENT, this::onHangingBreakByEntity);
+        Stimuli.global().listen(EntityUseEvent.EVENT, this::onPlayerInteractEntity);
+        Stimuli.global().listen(EntityDeathEvent.EVENT, this::onVehicleDestroy);
+        Stimuli.global().listen(EndPortalOpenEvent.EVENT, this::onEndPortalCreation);
+        BaseFireBlockOnPlaceCallback.EVENT.register(this::onNetherPortalCreation);
+        EntityHandleInsidePortalCallback.EVENT.register(this::onPortalEnter);
+        LecternTakeButtonCallback.EVENT.register(this::onPlayerTakeLecternBook);
 
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
             final ServerPlayer player = handler.player;
@@ -364,16 +330,17 @@ public class PlayerEventListener {
                     plotListener.plotEntry(pp, plot);
                 }
             }
-            // Delayed
-
             // Async
             TaskManager.runTaskLaterAsync(() -> {
+                /* TODO CHECK ON THIS */
                 /*if (!player.hasPlayedBefore() && player.isLocalPlayer()) {
                     player.saveData();
                 }*/
                 this.eventDispatcher.doJoinTask(pp);
             }, TaskTime.seconds(1L));
         });
+
+        ServerPlayConnectionEvents.DISCONNECT.register(this::onLeave);
 
         ServerPlayerEvents.AFTER_RESPAWN.register((oldPlayer, newPlayer, alive) -> {
             ServerPlayer player = newPlayer;
@@ -974,7 +941,7 @@ public class PlayerEventListener {
             }
             EntitySpawnListener.testNether(entity);
             Plot plot = location.getPlotAbs();
-            BukkitPlayer pp = BukkitUtil.adapt(e.getPlayer());
+            FabricPlayer pp = FabricUtil.adapt(serverPlayer);
             if (plot == null) {
                 if (!PlotFlagUtil.isAreaRoadFlagsAndFlagEquals(area, MiscInteractFlag.class, true) && !pp.hasPermission(
                         Permission.PERMISSION_ADMIN_INTERACT_ROAD
@@ -986,14 +953,13 @@ public class PlayerEventListener {
                                     Tag.inserting(Permission.PERMISSION_ADMIN_INTERACT_ROAD)
                             )
                     );
-                    e.setCancelled(true);
+                    return InteractionResult.FAIL;
                 }
             } else {
                 if (Settings.Done.RESTRICT_BUILDING && DoneFlag.isDone(plot)) {
                     if (!pp.hasPermission(Permission.PERMISSION_ADMIN_BUILD_OTHER)) {
                         pp.sendMessage(TranslatableCaption.of("done.building_restricted"));
-                        e.setCancelled(true);
-                        return;
+                        return InteractionResult.FAIL;
                     }
                 }
                 if (!plot.hasOwner()) {
@@ -1005,15 +971,15 @@ public class PlayerEventListener {
                                         Tag.inserting(Permission.PERMISSION_ADMIN_INTERACT_UNOWNED)
                                 )
                         );
-                        e.setCancelled(true);
+                        return InteractionResult.FAIL;
                     }
                 } else {
                     UUID uuid = pp.getUUID();
                     if (plot.isAdded(uuid)) {
-                        return;
+                        return InteractionResult.PASS;
                     }
                     if (plot.getFlag(MiscInteractFlag.class)) {
-                        return;
+                        return InteractionResult.PASS;
                     }
                     if (!pp.hasPermission(Permission.PERMISSION_ADMIN_INTERACT_OTHER)) {
                         pp.sendMessage(
@@ -1023,15 +989,157 @@ public class PlayerEventListener {
                                         Tag.inserting(Permission.PERMISSION_ADMIN_INTERACT_OTHER)
                                 )
                         );
-                        e.setCancelled(true);
                         plot.debug(pp.getName() + " could not interact with " + entity.getType()
                                 + " because misc-interact = false");
+                        return InteractionResult.FAIL;
                     }
                 }
             }
             return InteractionResult.PASS;
         });
 
+    }
+
+    private static InteractionResult interact(Player player, Level world, InteractionHand hand, BlockHitResult hitResult) {
+        boolean cancelled = false;
+        ItemStack itemStack = player.getItemInHand(hand);
+        BlockState blockstate = world.getBlockState(hitResult.getBlockPos());
+        Block block = blockstate.getBlock();
+        if (block instanceof SignBlock) {
+            if (/*DYES.contains(itemStack.getItem().toString())*/itemStack.getItem() instanceof DyeItem) {
+                Location location = FabricUtil.adapt(GlobalPos.of(world.dimension(), hitResult.getBlockPos()));
+                PlotArea area = location.getPlotArea();
+                if (area == null) {
+                    return InteractionResult.FAIL;
+                }
+                Plot plot = location.getOwnedPlot();
+                ServerPlayer serverPlayer = player.getServer().getPlayerList().getPlayer(player.getUUID());
+                if (plot == null) {
+                    if (PlotFlagUtil.isAreaRoadFlagsAndFlagEquals(area, EditSignFlag.class, false)
+                            && !FabricUtil
+                            .adapt(serverPlayer)
+                            .hasPermission(Permission.PERMISSION_ADMIN_INTERACT_ROAD.toString())) {
+                        cancelled = true;
+                    }
+                    return cancelled ? InteractionResult.FAIL : InteractionResult.PASS;
+                }
+                if (plot.isAdded(player.getUUID())) {
+                    return InteractionResult.PASS; // allow for added players
+                }
+                if (!plot.getFlag(EditSignFlag.class)
+                        && !FabricUtil
+                        .adapt(serverPlayer)
+                        .hasPermission(Permission.PERMISSION_ADMIN_INTERACT_OTHER.toString())) {
+                    plot.debug(player.getName() + " could not color the sign because of edit-sign = false");
+                    cancelled = true;
+                }
+            }
+        }
+        return cancelled ? InteractionResult.FAIL : InteractionResult.PASS;
+    }
+
+    private static InteractionResult onPlayerCommand(ServerPlayer serverPlayer, String s) {
+        String msg = s.replace("/", "").toLowerCase(Locale.ROOT).trim();
+        if (msg.isEmpty()) {
+            return InteractionResult.PASS;
+        }
+        ServerPlayer player = serverPlayer;
+        PlotPlayer<ServerPlayer> plotPlayer = FabricUtil.adapt(player);
+        Location location = plotPlayer.getLocation();
+        PlotArea area = location.getPlotArea();
+        if (area == null) {
+            return InteractionResult.FAIL;
+        }
+        String[] parts = msg.split(" ");
+        Plot plot = plotPlayer.getCurrentPlot();
+        // Check WorldEdit
+        switch (parts[0]) {
+            case "up", "worldedit:up" -> {
+                if (plot == null || (!plot.isAdded(plotPlayer.getUUID()) && !plotPlayer.hasPermission(
+                        Permission.PERMISSION_ADMIN_BUILD_OTHER,
+                        true
+                ))) {
+                    return InteractionResult.FAIL;
+                }
+            }
+        }
+        if (plot == null && !area.isRoadFlags()) {
+            return InteractionResult.PASS;
+        }
+
+        List<String> blockedCommands = plot != null ?
+                plot.getFlag(BlockedCmdsFlag.class) :
+                area.getFlag(BlockedCmdsFlag.class);
+        if (blockedCommands.isEmpty()) {
+            return InteractionResult.PASS;
+        }
+        if (plotPlayer.hasPermission(Permission.PERMISSION_ADMIN_INTERACT_BLOCKED_CMDS)) {
+            return InteractionResult.PASS;
+        }
+        // When using namespaced commands, we're not interested in the namespace
+        /*
+        String part = parts[0];
+        if (part.contains(":")) {
+            String[] namespaced = part.split(":");
+            part = namespaced[1];
+            msg = msg.substring(namespaced[0].length() + 1);
+        }
+        msg = replaceAliases(msg, part);*/
+        for (String blocked : blockedCommands) {
+            if (blocked.equalsIgnoreCase(msg)) {
+                String perm;
+                if (plot != null && plot.isAdded(plotPlayer.getUUID())) {
+                    perm = "plots.admin.command.blocked-cmds.shared";
+                } else {
+                    perm = "plots.admin.command.blocked-cmds.road";
+                }
+                if (!plotPlayer.hasPermission(perm)) {
+                    plotPlayer.sendMessage(TranslatableCaption.of("blockedcmds.command_blocked"));
+                    return InteractionResult.FAIL;
+                }
+                return InteractionResult.PASS;
+            }
+        }
+        return InteractionResult.PASS;
+    }
+
+    private static void onLoginInit(ServerLoginPacketListenerImpl handler, MinecraftServer server) {
+        final UUID uuid;
+        if (Settings.UUID.OFFLINE) {
+            if (Settings.UUID.FORCE_LOWERCASE) {
+                uuid = UUID.nameUUIDFromBytes(("OfflinePlayer:" + handler
+                        .getUserName()
+                        .toLowerCase()).getBytes(Charsets.UTF_8));
+            } else {
+                uuid = UUID.nameUUIDFromBytes(("OfflinePlayer:" + handler.getUserName()).getBytes(Charsets.UTF_8));
+            }
+        } else {
+            uuid = server.getProfileCache().get(handler.getUserName()).get().getId();
+        }
+        PlotSquared.get().getImpromptuUUIDPipeline().storeImmediately(handler.getUserName(), uuid);
+    }
+
+    public void afterBlockBreak(
+            Level world,
+            Player player,
+            BlockPos pos,
+            BlockState state,
+            @Nullable BlockEntity entity
+    ) {
+        Location location = FabricUtil.adapt(GlobalPos.of(world.dimension(), pos));
+        PlotArea area = location.getPlotArea();
+        if (area == null) {
+            return;
+        }
+        Plot plot = area.getPlot(location);
+        if (plot != null) {
+            Stimuli.global().listen(BlockDropItemsEvent.EVENT, (entity1, serverLevel, blockPos, blockState, list) -> {
+                if (plot.getFlag(TileDropFlag.class)) {
+                    return InteractionResultHolder.pass(list);
+                }
+                return InteractionResultHolder.fail(list);
+            });
+        }
     }
 
     public List<String> getLore(ItemStack stack) {
@@ -1065,12 +1173,13 @@ public class PlayerEventListener {
         displayTag.put("Lore", loreList);
     }
 
+    /*
     @EventHandler(priority = EventPriority.LOW)
     @SuppressWarnings("deprecation") // Paper deprecation
     public void onCancelledInteract(PlayerInteractEvent event) {
         if (event.isCancelled() && event.getAction() == Action.RIGHT_CLICK_AIR) {
             Player player = event.getPlayer();
-            BukkitPlayer pp = BukkitUtil.adapt(player);
+            FabricPlayer pp = FabricUtil.adapt(player);
             PlotArea area = pp.getPlotAreaAbs();
             if (area == null) {
                 return;
@@ -1092,7 +1201,7 @@ public class PlayerEventListener {
             if (type.toString().toLowerCase().endsWith("_egg")) {
                 Block block = player.getTargetBlockExact(5, FluidCollisionMode.SOURCE_ONLY);
                 if (block != null && block.getType() != Material.AIR) {
-                    Location location = BukkitUtil.adapt(block.getLocation());
+                    Location location = FabricUtil.adapt(block.getLocation());
                     if (!this.eventDispatcher.checkPlayerBlockEvent(pp, PlayerBlockEventType.SPAWN_MOB, location, null, true)) {
                         event.setCancelled(true);
                         event.setUseItemInHand(Event.Result.DENY);
@@ -1100,305 +1209,387 @@ public class PlayerEventListener {
                 }
             }
         }
-    }
+    }*/
 
-    @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
-    public void onInteract(PlayerInteractEvent event) {
-        Player player = event.getPlayer();
-        BukkitPlayer pp = BukkitUtil.adapt(player);
+
+    public InteractionResult onAttackBlock(
+            ServerPlayer serverPlayer, ServerLevel serverLevel, InteractionHand hand, BlockPos pos,
+            Direction direction
+    ) {
+        ServerPlayer player = serverPlayer;
+        FabricPlayer pp = FabricUtil.adapt(player);
         PlotArea area = pp.getPlotAreaAbs();
         if (area == null) {
-            return;
+            return InteractionResult.PASS;
         }
         PlayerBlockEventType eventType;
         BlockType blocktype1;
-        Block block = event.getClickedBlock();
-        if (block == null) {
-            // We do not care in this case, the player is likely interacting with air ("nothing").
-            return;
+        Block blockType = serverLevel.getBlockState(pos).getBlock();
+        Location location = FabricUtil.adapt(GlobalPos.of(serverLevel.dimension(), pos));
+        // todo: when the code above is rearranged, it would be great to beautify this as well.
+        // will code this as a temporary, specific bug fix (for dragon eggs)
+        if (blockType != Blocks.DRAGON_EGG) {
+            return InteractionResult.FAIL;
         }
-        Location location = BukkitUtil.adapt(block.getLocation());
-        Action action = event.getAction();
-        switch (action) {
-            case PHYSICAL -> {
-                eventType = PlayerBlockEventType.TRIGGER_PHYSICAL;
-                blocktype1 = BukkitAdapter.asBlockType(block.getType());
-            }
 
-            //todo rearrange the right click code. it is all over the place.
-            case RIGHT_CLICK_BLOCK -> {
-                Material blockType = block.getType();
-                eventType = PlayerBlockEventType.INTERACT_BLOCK;
-                blocktype1 = BukkitAdapter.asBlockType(block.getType());
+        eventType = PlayerBlockEventType.INTERACT_BLOCK;
+        blocktype1 = FabricAdapter.adapt(blockType);
 
-                if (blockType.isInteractable()) {
-                    if (!player.isSneaking()) {
-                        break;
-                    }
-                    ItemStack hand = player.getInventory().getItemInMainHand();
-                    ItemStack offHand = player.getInventory().getItemInOffHand();
-
-                    // sneaking players interact with blocks if both hands are empty
-                    if (hand.getType() == Material.AIR && offHand.getType() == Material.AIR) {
-                        break;
-                    }
-                }
-
-                Material type = event.getMaterial();
-
-                // in the following, lb needs to have the material of the item in hand i.e. type
-                switch (type.toString()) {
-                    case "REDSTONE", "STRING", "PUMPKIN_SEEDS", "MELON_SEEDS", "COCOA_BEANS", "WHEAT_SEEDS", "BEETROOT_SEEDS",
-                            "SWEET_BERRIES", "GLOW_BERRIES" -> {
-                        return;
-                    }
-                    default -> {
-                        //eventType = PlayerBlockEventType.PLACE_BLOCK;
-                        if (type.isBlock()) {
-                            return;
-                        }
-                    }
-                }
-                if (PaperLib.isPaper()) {
-                    if (MaterialTags.SPAWN_EGGS.isTagged(type) || Material.EGG.equals(type)) {
-                        eventType = PlayerBlockEventType.SPAWN_MOB;
-                        break;
-                    }
-                } else {
-                    if (type.toString().toLowerCase().endsWith("egg")) {
-                        eventType = PlayerBlockEventType.SPAWN_MOB;
-                        break;
-                    }
-                }
-                if (type.isEdible()) {
-                    //Allow all players to eat while also allowing the block place event to be fired
-                    return;
-                }
-                if (type == Material.ARMOR_STAND) {
-                    location = BukkitUtil.adapt(block.getRelative(event.getBlockFace()).getLocation());
-                    eventType = PlayerBlockEventType.PLACE_MISC;
-                }
-                if (org.bukkit.Tag.ITEMS_BOATS.isTagged(type) || MINECARTS.contains(type)) {
-                    eventType = PlayerBlockEventType.PLACE_VEHICLE;
-                    break;
-                }
-                if (type == Material.FIREWORK_ROCKET || type == Material.FIREWORK_STAR) {
-                    eventType = PlayerBlockEventType.SPAWN_MOB;
-                    break;
-                }
-                if (BOOKS.contains(type)) {
-                    eventType = PlayerBlockEventType.READ;
-                    break;
-                }
-            }
-            case LEFT_CLICK_BLOCK -> {
-                Material blockType = block.getType();
-
-                // todo: when the code above is rearranged, it would be great to beautify this as well.
-                // will code this as a temporary, specific bug fix (for dragon eggs)
-                if (blockType != Material.DRAGON_EGG) {
-                    return;
-                }
-
-                eventType = PlayerBlockEventType.INTERACT_BLOCK;
-                blocktype1 = BukkitAdapter.asBlockType(block.getType());
-            }
-            default -> {
-                return;
-            }
-        }
         if (this.worldEdit != null && pp.getAttribute("worldedit")) {
-            if (event.getMaterial() == Material.getMaterial(this.worldEdit.getConfiguration().wandItem)) {
-                return;
+            if (serverPlayer
+                    .getItemInHand(hand)
+                    .getItem() == BuiltInRegistries.ITEM.get(new ResourceLocation(this.worldEdit.getConfiguration().wandItem))) {
+                return InteractionResult.PASS;
             }
         }
         if (!this.eventDispatcher.checkPlayerBlockEvent(pp, eventType, location, blocktype1, true)) {
-            event.setCancelled(true);
-            event.setUseInteractedBlock(Event.Result.DENY);
+            return InteractionResult.FAIL;
         }
+        return InteractionResult.PASS;
     }
 
+    public InteractionResult onUseBlock(
+            ServerPlayer serverPlayer,
+            ServerLevel serverLevel,
+            InteractionHand hand,
+            BlockHitResult hitResult
+    ) {
+        ServerPlayer player = serverPlayer;
+        FabricPlayer pp = FabricUtil.adapt(player);
+        PlotArea area = pp.getPlotAreaAbs();
+        if (area == null) {
+            return InteractionResult.PASS;
+        }
+        PlayerBlockEventType eventType;
+        BlockType blocktype1;
+        Block blockType = serverLevel.getBlockState(hitResult.getBlockPos()).getBlock();
+        Location location = FabricUtil.adapt(GlobalPos.of(serverLevel.dimension(), hitResult.getBlockPos()));
+
+        eventType = PlayerBlockEventType.INTERACT_BLOCK;
+        blocktype1 = FabricAdapter.adapt(blockType);
+
+        if (player.isCrouching()) {
+
+            ItemStack handItemStack = player.getMainHandItem();
+            ItemStack offHandItemStack = player.getOffhandItem();
+
+            // sneaking players interact with blocks if both hands are empty
+            if (handItemStack.isEmpty() && offHandItemStack.isEmpty()) {
+                /*
+                if (this.worldEdit != null && pp.getAttribute("worldedit")) {
+                    if (event.getMaterial() == Material.getMaterial(this.worldEdit.getConfiguration().wandItem)) {
+                        return InteractionResult.PASS;
+                    }
+                }*/
+                if (!this.eventDispatcher.checkPlayerBlockEvent(pp, eventType, location, blocktype1, true)) {
+                    return InteractionResult.FAIL;
+                }
+            }
+        }
+
+        Item type = player.getItemInHand(hand).getItem();
+
+        // in the following, lb needs to have the material of the item in hand i.e. type
+        switch (type.toString()) {
+            case "redstone", "string", "pumpkin_seeds", "melon_seeds", "cocoa_beans", "wheat_seeds", "beetroot_seeds",
+                    "sweet_berries", "glow_berries" -> {
+                return InteractionResult.PASS;
+            }
+            default -> {
+                //eventType = PlayerBlockEventType.PLACE_BLOCK;
+                if (type instanceof BlockItem) {
+                    return InteractionResult.PASS;
+                }
+            }
+        }
+        /*if (PaperLib.isPaper()) {
+            if (MaterialTags.SPAWN_EGGS.isTagged(type) || Material.EGG.equals(type)) {
+                eventType = PlayerBlockEventType.SPAWN_MOB;
+                if (this.worldEdit != null && pp.getAttribute("worldedit")) {
+                    if (event.getMaterial() == Material.getMaterial(this.worldEdit.getConfiguration().wandItem)) {
+                        return InteractionResult.PASS;
+                    }
+                }
+                if (!this.eventDispatcher.checkPlayerBlockEvent(pp, eventType, location, blocktype1, true)) {
+                    return InteractionResult.FAIL;
+                }
+            }
+        } else {*/
+        if (type instanceof SpawnEggItem) {
+            eventType = PlayerBlockEventType.SPAWN_MOB;
+            if (this.worldEdit != null && pp.getAttribute("worldedit")) {
+                if (type == BuiltInRegistries.ITEM.get(new ResourceLocation(this.worldEdit.getConfiguration().wandItem))) {
+                    return InteractionResult.PASS;
+                }
+            }
+            if (!this.eventDispatcher.checkPlayerBlockEvent(pp, eventType, location, blocktype1, true)) {
+                return InteractionResult.FAIL;
+            }
+        }
+        //}
+        if (type.isEdible()) {
+            //Allow all players to eat while also allowing the block place event to be fired
+            return InteractionResult.PASS;
+        }
+        if (type == Items.ARMOR_STAND) {
+            location =
+                    FabricUtil.adapt(GlobalPos.of(
+                            serverLevel.dimension(),
+                            hitResult.getBlockPos().relative(hitResult.getDirection().getOpposite())
+                    ));
+            eventType = PlayerBlockEventType.PLACE_MISC;
+        }
+        if (TagUtil.isIn(ItemTags.BOATS, type) || MINECARTS.contains(type)) {
+            eventType = PlayerBlockEventType.PLACE_VEHICLE;
+            if (this.worldEdit != null && pp.getAttribute("worldedit")) {
+                if (type == BuiltInRegistries.ITEM.get(new ResourceLocation(this.worldEdit.getConfiguration().wandItem))) {
+                    return InteractionResult.PASS;
+                }
+            }
+            if (!this.eventDispatcher.checkPlayerBlockEvent(pp, eventType, location, blocktype1, true)) {
+                return InteractionResult.FAIL;
+            }
+        }
+        if (type instanceof FireworkRocketItem || type instanceof FireworkStarItem) {
+            eventType = PlayerBlockEventType.SPAWN_MOB;
+            if (this.worldEdit != null && pp.getAttribute("worldedit")) {
+                if (type == BuiltInRegistries.ITEM.get(new ResourceLocation(this.worldEdit.getConfiguration().wandItem))) {
+                    return InteractionResult.PASS;
+                }
+            }
+            if (!this.eventDispatcher.checkPlayerBlockEvent(pp, eventType, location, blocktype1, true)) {
+                return InteractionResult.FAIL;
+            }
+        }
+        if (BOOKS.contains(type)) {
+            eventType = PlayerBlockEventType.READ;
+            if (this.worldEdit != null && pp.getAttribute("worldedit")) {
+                if (type == BuiltInRegistries.ITEM.get(new ResourceLocation(this.worldEdit.getConfiguration().wandItem))) {
+                    return InteractionResult.PASS;
+                }
+            }
+            if (!this.eventDispatcher.checkPlayerBlockEvent(pp, eventType, location, blocktype1, true)) {
+                return InteractionResult.FAIL;
+            }
+        }
+        return InteractionResult.PASS;
+    }
+
+    public InteractionResult onTrample(
+            LivingEntity livingEntity,
+            ServerLevel serverLevel,
+            BlockPos pos,
+            BlockState from,
+            BlockState to
+    ) {
+        if (livingEntity instanceof ServerPlayer serverPlayer) {
+            FabricPlayer pp = FabricUtil.adapt(serverPlayer);
+            PlotArea area = pp.getPlotAreaAbs();
+            if (area == null) {
+                return InteractionResult.PASS;
+            }
+            PlayerBlockEventType eventType;
+            BlockType blocktype1;
+            Block blockType = serverLevel.getBlockState(pos).getBlock();
+            Location location = FabricUtil.adapt(GlobalPos.of(serverLevel.dimension(), pos));
+
+            eventType = PlayerBlockEventType.TRIGGER_PHYSICAL;
+            blocktype1 = FabricAdapter.adapt(blockType);
+            if (this.worldEdit != null && pp.getAttribute("worldedit")) {
+                if (serverPlayer
+                        .getUseItem()
+                        .getItem() == BuiltInRegistries.ITEM.get(new ResourceLocation(this.worldEdit.getConfiguration().wandItem))) {
+                    return InteractionResult.PASS;
+                }
+            }
+            if (!this.eventDispatcher.checkPlayerBlockEvent(pp, eventType, location, blocktype1, true)) {
+                return InteractionResult.FAIL;
+            }
+        }
+        return InteractionResult.PASS;
+    }
+
+    /* TODO CHECK ON THIS BOAT */
     // Boats can sometimes be placed on interactable blocks such as levers,
     // see PS-175. Armor stands, minecarts and end crystals (the other entities
     // supported by this event) don't have this issue.
-    @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
-    public void onBoatPlace(EntityPlaceEvent event) {
-        Player player = event.getPlayer();
-        if (player == null) {
-            return;
+    /*public InteractionResultHolder<ItemStack> onBoatPlace(ServerPlayer serverPlayer, InteractionHand hand) {
+        if (serverPlayer.getUseItem().getItem() instanceof BoatItem) {
+            ServerPlayer player = serverPlayer;
+            if (player == null) {
+                return InteractionResultHolder.pass(ItemStack.EMPTY);
+            }
+            Entity placed = event.getEntity();
+            if (!(placed instanceof Boat)) {
+                return InteractionResultHolder.pass(ItemStack.EMPTY);
+            }
+            FabricPlayer pp = FabricUtil.adapt(serverPlayer);
+            PlotArea area = pp.getPlotAreaAbs();
+            if (area == null) {
+                return InteractionResultHolder.pass(ItemStack.EMPTY);
+            }
+            PlayerBlockEventType eventType = PlayerBlockEventType.PLACE_VEHICLE;
+            Block block = event.getBlock();
+            BlockType blockType = FabricAdapter.adapt(block);
+            Location location = FabricUtil.adapt(block.getLocation());
+            if (!PlotSquared.get().getEventDispatcher()
+                    .checkPlayerBlockEvent(pp, eventType, location, blockType, true)) {
+                return InteractionResultHolder.fail(ItemStack.EMPTY);
+            }
         }
-        Entity placed = event.getEntity();
-        if (!(placed instanceof Boat)) {
-            return;
-        }
-        BukkitPlayer pp = BukkitUtil.adapt(event.getPlayer());
-        PlotArea area = pp.getPlotAreaAbs();
-        if (area == null) {
-            return;
-        }
-        PlayerBlockEventType eventType = PlayerBlockEventType.PLACE_VEHICLE;
-        Block block = event.getBlock();
-        BlockType blockType = BukkitAdapter.asBlockType(block.getType());
-        Location location = BukkitUtil.adapt(block.getLocation());
-        if (!PlotSquared.get().getEventDispatcher()
-                .checkPlayerBlockEvent(pp, eventType, location, blockType, true)) {
-            event.setCancelled(true);
-        }
-    }
+        return InteractionResultHolder.pass(ItemStack.EMPTY);
+    }*/
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onBucketEmpty(PlayerBucketEmptyEvent event) {
-        BlockFace bf = event.getBlockFace();
-        // Note: a month after Bukkit 1.14.4 released, they added the API method
-        // PlayerBucketEmptyEvent#getBlock(), which returns the block the
-        // bucket contents is going to be placed at. Currently we determine this
-        // block ourselves to retain compatibility with 1.13.
-        final Block block;
-        // if the block can be waterlogged, the event might waterlog the block
-        // sometimes
-        if (event.getBlockClicked().getBlockData() instanceof Waterlogged waterlogged
-                && !waterlogged.isWaterlogged() && event.getBucket() != Material.LAVA_BUCKET) {
-            block = event.getBlockClicked();
-        } else {
-            block = event.getBlockClicked().getLocation()
-                    .add(bf.getModX(), bf.getModY(), bf.getModZ())
-                    .getBlock();
-        }
-        Location location = BukkitUtil.adapt(block.getLocation());
-        PlotArea area = location.getPlotArea();
-        if (area == null) {
-            return;
-        }
-        BukkitPlayer pp = BukkitUtil.adapt(event.getPlayer());
-        Plot plot = area.getPlot(location);
-        if (plot == null) {
-            if (pp.hasPermission(Permission.PERMISSION_ADMIN_BUILD_ROAD)) {
-                return;
+    public InteractionResult onBucketEmpty(Player player, Level level, BlockPos blockPos, BlockHitResult hitResult) {
+        if (player.getUseItem().getItem() instanceof BucketItem bucketItem && player instanceof ServerPlayer serverPlayer) {
+            Direction direction = hitResult.getDirection();
+            // Note: a month after Bukkit 1.14.4 released, they added the API method
+            // PlayerBucketEmptyEvent#getBlock(), which returns the block the
+            // bucket contents is going to be placed at. Currently we determine this
+            // block ourselves to retain compatibility with 1.13.
+            BlockState blockState = serverPlayer.serverLevel().getBlockState(hitResult.getBlockPos());
+            final BlockPos TargetBlockPos;
+            // if the block can be waterlogged, the event might waterlog the block
+            // sometimes
+            if (blockState.hasProperty(BlockStateProperties.WATERLOGGED) && !blockState.getValue(BlockStateProperties.WATERLOGGED) && bucketItem != Items.LAVA_BUCKET) {
+                TargetBlockPos = hitResult.getBlockPos();
+            } else {
+                TargetBlockPos = hitResult.getBlockPos().relative(direction);
             }
-            pp.sendMessage(
-                    TranslatableCaption.of("permission.no_permission_event"),
-                    TagResolver.resolver("node", Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_ROAD))
-            );
-            event.setCancelled(true);
-        } else if (!plot.hasOwner()) {
-            if (pp.hasPermission(Permission.PERMISSION_ADMIN_BUILD_UNOWNED)) {
-                return;
+            Location location = FabricUtil.adapt(GlobalPos.of(level.dimension(), TargetBlockPos));
+            PlotArea area = location.getPlotArea();
+            if (area == null) {
+                return InteractionResult.PASS;
             }
-            pp.sendMessage(
-                    TranslatableCaption.of("permission.no_permission_event"),
-                    TagResolver.resolver(
-                            "node",
-                            Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_UNOWNED)
-                    )
-            );
-            event.setCancelled(true);
-        } else if (!plot.isAdded(pp.getUUID())) {
-            if (pp.hasPermission(Permission.PERMISSION_ADMIN_BUILD_OTHER)) {
-                return;
-            }
-            pp.sendMessage(
-                    TranslatableCaption.of("permission.no_permission_event"),
-                    TagResolver.resolver(
-                            "node",
-                            Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_OTHER)
-                    )
-            );
-            event.setCancelled(true);
-        } else if (Settings.Done.RESTRICT_BUILDING && DoneFlag.isDone(plot)) {
-            if (!pp.hasPermission(Permission.PERMISSION_ADMIN_BUILD_OTHER)) {
+            FabricPlayer pp = FabricUtil.adapt(serverPlayer);
+            Plot plot = area.getPlot(location);
+            if (plot == null) {
+                if (pp.hasPermission(Permission.PERMISSION_ADMIN_BUILD_ROAD)) {
+                    return InteractionResult.PASS;
+                }
                 pp.sendMessage(
-                        TranslatableCaption.of("done.building_restricted")
+                        TranslatableCaption.of("permission.no_permission_event"),
+                        TagResolver.resolver("node", Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_ROAD))
                 );
-                event.setCancelled(true);
+                return InteractionResult.FAIL;
+            } else if (!plot.hasOwner()) {
+                if (pp.hasPermission(Permission.PERMISSION_ADMIN_BUILD_UNOWNED)) {
+                    return InteractionResult.PASS;
+                }
+                pp.sendMessage(
+                        TranslatableCaption.of("permission.no_permission_event"),
+                        TagResolver.resolver(
+                                "node",
+                                Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_UNOWNED)
+                        )
+                );
+                return InteractionResult.FAIL;
+            } else if (!plot.isAdded(pp.getUUID())) {
+                if (pp.hasPermission(Permission.PERMISSION_ADMIN_BUILD_OTHER)) {
+                    return InteractionResult.PASS;
+                }
+                pp.sendMessage(
+                        TranslatableCaption.of("permission.no_permission_event"),
+                        TagResolver.resolver(
+                                "node",
+                                Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_OTHER)
+                        )
+                );
+                return InteractionResult.FAIL;
+            } else if (Settings.Done.RESTRICT_BUILDING && DoneFlag.isDone(plot)) {
+                if (!pp.hasPermission(Permission.PERMISSION_ADMIN_BUILD_OTHER)) {
+                    pp.sendMessage(
+                            TranslatableCaption.of("done.building_restricted")
+                    );
+                    return InteractionResult.FAIL;
+                }
             }
         }
+        return InteractionResult.PASS;
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST)
-    public void onInventoryClose(InventoryCloseEvent event) {
-        HumanEntity closer = event.getPlayer();
-        if (!(closer instanceof Player player)) {
-            return;
-        }
-        PlotInventory.removePlotInventoryOpen(BukkitUtil.adapt(player));
+    public InteractionResult onInventoryClose(
+            ServerboundContainerClosePacket serverboundContainerClosePacket,
+            ServerPlayer serverPlayer
+    ) {
+        PlotInventory.removePlotInventoryOpen(FabricUtil.adapt(serverPlayer));
+        return InteractionResult.PASS;
     }
 
-    @EventHandler(priority = EventPriority.MONITOR)
-    public void onLeave(PlayerQuitEvent event) {
-        TaskManager.removeFromTeleportQueue(event.getPlayer().getName());
-        BukkitPlayer pp = BukkitUtil.adapt(event.getPlayer());
+    public void onLeave(ServerGamePacketListenerImpl handler, MinecraftServer server) {
+        TaskManager.removeFromTeleportQueue(handler.player.getName().getString());
+        FabricPlayer pp = FabricUtil.adapt(handler.getPlayer());
         pp.unregister();
         plotListener.logout(pp.getUUID());
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onBucketFill(PlayerBucketFillEvent event) {
-        Block blockClicked = event.getBlockClicked();
-        Location location = BukkitUtil.adapt(blockClicked.getLocation());
-        PlotArea area = location.getPlotArea();
-        if (area == null) {
-            return;
-        }
-        Player player = event.getPlayer();
-        BukkitPlayer plotPlayer = BukkitUtil.adapt(player);
-        Plot plot = area.getPlot(location);
-        if (plot == null) {
-            if (plotPlayer.hasPermission(Permission.PERMISSION_ADMIN_BUILD_ROAD)) {
-                return;
+    public InteractionResult onBucketFill(Player player, Level level, InteractionHand hand, BlockHitResult hitResult) {
+        if (player instanceof ServerPlayer serverPlayer) {
+            BlockPos blockClicked = hitResult.getBlockPos();
+            Location location = FabricUtil.adapt(GlobalPos.of(level.dimension(), blockClicked));
+            PlotArea area = location.getPlotArea();
+            if (area == null) {
+                return InteractionResult.PASS;
             }
-            plotPlayer.sendMessage(
-                    TranslatableCaption.of("permission.no_permission_event"),
-                    TagResolver.resolver("node", Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_ROAD))
-            );
-            event.setCancelled(true);
-        } else if (!plot.hasOwner()) {
-            if (plotPlayer.hasPermission(Permission.PERMISSION_ADMIN_BUILD_UNOWNED)) {
-                return;
-            }
-            plotPlayer.sendMessage(
-                    TranslatableCaption.of("permission.no_permission_event"),
-                    TagResolver.resolver(
-                            "node",
-                            Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_UNOWNED)
-                    )
-            );
-            event.setCancelled(true);
-        } else if (!plot.isAdded(plotPlayer.getUUID())) {
-            if (plotPlayer.hasPermission(Permission.PERMISSION_ADMIN_BUILD_OTHER)) {
-                return;
-            }
-            plotPlayer.sendMessage(
-                    TranslatableCaption.of("permission.no_permission_event"),
-                    TagResolver.resolver(
-                            "node",
-                            Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_OTHER)
-                    )
-            );
-            event.setCancelled(true);
-        } else if (Settings.Done.RESTRICT_BUILDING && DoneFlag.isDone(plot)) {
-            if (!plotPlayer.hasPermission(Permission.PERMISSION_ADMIN_BUILD_OTHER)) {
+            FabricPlayer plotPlayer = FabricUtil.adapt(serverPlayer);
+            Plot plot = area.getPlot(location);
+            if (plot == null) {
+                if (plotPlayer.hasPermission(Permission.PERMISSION_ADMIN_BUILD_ROAD)) {
+                    return InteractionResult.PASS;
+                }
                 plotPlayer.sendMessage(
-                        TranslatableCaption.of("done.building_restricted")
+                        TranslatableCaption.of("permission.no_permission_event"),
+                        TagResolver.resolver("node", Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_ROAD))
                 );
-                event.setCancelled(true);
+                return InteractionResult.FAIL;
+            } else if (!plot.hasOwner()) {
+                if (plotPlayer.hasPermission(Permission.PERMISSION_ADMIN_BUILD_UNOWNED)) {
+                    return InteractionResult.PASS;
+                }
+                plotPlayer.sendMessage(
+                        TranslatableCaption.of("permission.no_permission_event"),
+                        TagResolver.resolver(
+                                "node",
+                                Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_UNOWNED)
+                        )
+                );
+                return InteractionResult.FAIL;
+            } else if (!plot.isAdded(plotPlayer.getUUID())) {
+                if (plotPlayer.hasPermission(Permission.PERMISSION_ADMIN_BUILD_OTHER)) {
+                    return InteractionResult.PASS;
+                }
+                plotPlayer.sendMessage(
+                        TranslatableCaption.of("permission.no_permission_event"),
+                        TagResolver.resolver(
+                                "node",
+                                Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_OTHER)
+                        )
+                );
+                return InteractionResult.FAIL;
+            } else if (Settings.Done.RESTRICT_BUILDING && DoneFlag.isDone(plot)) {
+                if (!plotPlayer.hasPermission(Permission.PERMISSION_ADMIN_BUILD_OTHER)) {
+                    plotPlayer.sendMessage(
+                            TranslatableCaption.of("done.building_restricted")
+                    );
+                    return InteractionResult.FAIL;
+                }
             }
         }
+        return InteractionResult.PASS;
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onHangingPlace(HangingPlaceEvent event) {
-        Block block = event.getBlock().getRelative(event.getBlockFace());
-        Location location = BukkitUtil.adapt(block.getLocation());
+    public InteractionResult onHangingPlace(ServerPlayer player, InteractionHand hand, BlockHitResult hitResult) {
+        Block block = player.serverLevel().getBlockState(hitResult.getBlockPos()).getBlock();
+        Location location = FabricUtil.adapt(GlobalPos.of(player.serverLevel().dimension(), hitResult.getBlockPos()));
         PlotArea area = location.getPlotArea();
         if (area == null) {
-            return;
+            return InteractionResult.PASS;
         }
-        Player p = event.getPlayer();
+        ServerPlayer p = player;
         if (p == null) {
-            event.setCancelled(true);
-            return;
+            return InteractionResult.FAIL;
         }
-        BukkitPlayer pp = BukkitUtil.adapt(p);
+        FabricPlayer pp = FabricUtil.adapt(p);
         Plot plot = area.getPlot(location);
         if (plot == null) {
             if (!pp.hasPermission(Permission.PERMISSION_ADMIN_BUILD_ROAD)) {
@@ -1409,7 +1600,7 @@ public class PlayerEventListener {
                                 Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_ROAD)
                         )
                 );
-                event.setCancelled(true);
+                return InteractionResult.FAIL;
             }
         } else {
             if (!plot.hasOwner()) {
@@ -1421,9 +1612,9 @@ public class PlayerEventListener {
                                     Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_UNOWNED)
                             )
                     );
-                    event.setCancelled(true);
+                    return InteractionResult.FAIL;
                 }
-                return;
+                return InteractionResult.PASS;
             }
             if (!plot.isAdded(pp.getUUID())) {
                 if (!plot.getFlag(HangingPlaceFlag.class)) {
@@ -1435,28 +1626,24 @@ public class PlayerEventListener {
                                         Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_OTHER)
                                 )
                         );
-                        event.setCancelled(true);
+                        return InteractionResult.FAIL;
                     }
-                    return;
+                    return InteractionResult.PASS;
                 }
             }
-            if (BukkitEntityUtil.checkEntity(event.getEntity(), plot)) {
-                event.setCancelled(true);
-            }
-
         }
+        return InteractionResult.PASS;
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onHangingBreakByEntity(HangingBreakByEntityEvent event) {
-        Entity remover = event.getRemover();
-        if (remover instanceof Player p) {
-            Location location = BukkitUtil.adapt(event.getEntity().getLocation());
+    public InteractionResult onHangingBreakByEntity(LivingEntity entity, DamageSource damageSource) {
+        Entity remover = damageSource.getEntity();
+        if (remover instanceof ServerPlayer p) {
+            Location location = FabricUtil.adapt(GlobalPos.of(entity.level().dimension(), entity.blockPosition()));
             PlotArea area = location.getPlotArea();
             if (area == null) {
-                return;
+                return InteractionResult.PASS;
             }
-            BukkitPlayer pp = BukkitUtil.adapt(p);
+            FabricPlayer pp = FabricUtil.adapt(p);
             Plot plot = area.getPlot(location);
             if (plot == null) {
                 if (!pp.hasPermission(Permission.PERMISSION_ADMIN_DESTROY_ROAD)) {
@@ -1467,7 +1654,7 @@ public class PlayerEventListener {
                                     Tag.inserting(Permission.PERMISSION_ADMIN_DESTROY_ROAD)
                             )
                     );
-                    event.setCancelled(true);
+                    return InteractionResult.FAIL;
                 }
             } else if (!plot.hasOwner()) {
                 if (!pp.hasPermission(Permission.PERMISSION_ADMIN_DESTROY_UNOWNED)) {
@@ -1478,11 +1665,11 @@ public class PlayerEventListener {
                                     Tag.inserting(Permission.PERMISSION_ADMIN_DESTROY_UNOWNED)
                             )
                     );
-                    event.setCancelled(true);
+                    return InteractionResult.FAIL;
                 }
             } else if (!plot.isAdded(pp.getUUID())) {
                 if (plot.getFlag(HangingBreakFlag.class)) {
-                    return;
+                    return InteractionResult.PASS;
                 }
                 if (!pp.hasPermission(Permission.PERMISSION_ADMIN_DESTROY_OTHER)) {
                     pp.sendMessage(
@@ -1492,20 +1679,20 @@ public class PlayerEventListener {
                                     Tag.inserting(Permission.PERMISSION_ADMIN_DESTROY_OTHER)
                             )
                     );
-                    event.setCancelled(true);
                     plot.debug(p.getName()
                             + " could not break hanging entity because hanging-break = false");
+                    return InteractionResult.FAIL;
                 }
             }
         } else if (remover instanceof Projectile p) {
-            if (p.getShooter() instanceof Player shooter) {
-                Location location = BukkitUtil.adapt(event.getEntity().getLocation());
+            if (p.getOwner() instanceof ServerPlayer shooter) {
+                Location location = FabricUtil.adapt(GlobalPos.of(entity.level().dimension(), entity.blockPosition()));
                 PlotArea area = location.getPlotArea();
                 if (area == null) {
-                    return;
+                    return InteractionResult.PASS;
                 }
-                BukkitPlayer player = BukkitUtil.adapt(shooter);
-                Plot plot = area.getPlot(BukkitUtil.adapt(event.getEntity().getLocation()));
+                FabricPlayer player = FabricUtil.adapt(shooter);
+                Plot plot = area.getPlot(FabricUtil.adapt(GlobalPos.of(entity.level().dimension(), entity.blockPosition())));
                 if (plot != null) {
                     if (!plot.hasOwner()) {
                         if (!player.hasPermission(Permission.PERMISSION_ADMIN_DESTROY_UNOWNED)) {
@@ -1516,7 +1703,7 @@ public class PlayerEventListener {
                                             Tag.inserting(Permission.PERMISSION_ADMIN_DESTROY_UNOWNED)
                                     )
                             );
-                            event.setCancelled(true);
+                            return InteractionResult.FAIL;
                         }
                     } else if (!plot.isAdded(player.getUUID())) {
                         if (!plot.getFlag(HangingBreakFlag.class)) {
@@ -1528,31 +1715,35 @@ public class PlayerEventListener {
                                                 Tag.inserting(Permission.PERMISSION_ADMIN_DESTROY_OTHER)
                                         )
                                 );
-                                event.setCancelled(true);
                                 plot.debug(player.getName()
                                         + " could not break hanging entity because hanging-break = false");
+                                return InteractionResult.FAIL;
                             }
                         }
                     }
                 }
             }
         } else {
-            event.setCancelled(true);
+            return InteractionResult.FAIL;
         }
+        return InteractionResult.PASS;
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onPlayerInteractEntity(PlayerInteractEntityEvent event) {
-        if (event.getRightClicked().getType() == EntityType.UNKNOWN) {
+    public InteractionResult onPlayerInteractEntity(
+            ServerPlayer serverPlayer, Entity entity, InteractionHand hand,
+            EntityHitResult entityHitResult
+    ) {
+       /* if (event.getRightClicked().getType() == EntityType.UNKNOWN) {
             return;
-        }
-        Location location = BukkitUtil.adapt(event.getRightClicked().getLocation());
+        }*/
+        Location location = FabricUtil.adapt(GlobalPos.of(serverPlayer.serverLevel().dimension(), entityHitResult.getEntity()
+                .getOnPos()));
         PlotArea area = location.getPlotArea();
         if (area == null) {
-            return;
+            return InteractionResult.PASS;
         }
-        Player p = event.getPlayer();
-        BukkitPlayer pp = BukkitUtil.adapt(p);
+        ServerPlayer p = serverPlayer;
+        FabricPlayer pp = FabricUtil.adapt(p);
         Plot plot = area.getPlot(location);
         if (plot == null && !area.isRoadFlags()) {
             if (!pp.hasPermission(Permission.PERMISSION_ADMIN_INTERACT_ROAD)) {
@@ -1563,7 +1754,7 @@ public class PlayerEventListener {
                                 Tag.inserting(Permission.PERMISSION_ADMIN_INTERACT_ROAD)
                         )
                 );
-                event.setCancelled(true);
+                return InteractionResult.FAIL;
             }
         } else if (plot != null && !plot.hasOwner()) {
             if (!pp.hasPermission(Permission.PERMISSION_ADMIN_INTERACT_UNOWNED)) {
@@ -1574,13 +1765,12 @@ public class PlayerEventListener {
                                 Tag.inserting(Permission.PERMISSION_ADMIN_INTERACT_UNOWNED)
                         )
                 );
-                event.setCancelled(true);
+                return InteractionResult.FAIL;
             }
         } else if ((plot != null && !plot.isAdded(pp.getUUID())) || (plot == null && area
                 .isRoadFlags())) {
-            final Entity entity = event.getRightClicked();
             final com.sk89q.worldedit.world.entity.EntityType entityType =
-                    BukkitAdapter.adapt(entity.getType());
+                    EntityType.REGISTRY.get(entity.getType().toString());
 
             FlagContainer flagContainer;
             if (plot == null) {
@@ -1591,40 +1781,40 @@ public class PlayerEventListener {
 
             if (EntityCategories.HOSTILE.contains(entityType) && flagContainer
                     .getFlag(HostileInteractFlag.class).getValue()) {
-                return;
+                return InteractionResult.PASS;
             }
 
             if (EntityCategories.ANIMAL.contains(entityType) && flagContainer
                     .getFlag(AnimalInteractFlag.class).getValue()) {
-                return;
+                return InteractionResult.PASS;
             }
 
             // This actually makes use of the interface, so we don't use the
             // category
-            if (entity instanceof Tameable && ((Tameable) entity).isTamed() && flagContainer
+            if (entity instanceof OwnableEntity && ((OwnableEntity) entity).getOwner() != null && flagContainer
                     .getFlag(TamedInteractFlag.class).getValue()) {
-                return;
+                return InteractionResult.PASS;
             }
 
             if (EntityCategories.VEHICLE.contains(entityType) && flagContainer
                     .getFlag(VehicleUseFlag.class).getValue()) {
-                return;
+                return InteractionResult.PASS;
             }
 
             if (EntityCategories.PLAYER.contains(entityType) && flagContainer
                     .getFlag(PlayerInteractFlag.class).getValue()) {
-                return;
+                return InteractionResult.PASS;
             }
 
             if (EntityCategories.VILLAGER.contains(entityType) && flagContainer
                     .getFlag(VillagerInteractFlag.class).getValue()) {
-                return;
+                return InteractionResult.PASS;
             }
 
             if ((EntityCategories.HANGING.contains(entityType) || EntityCategories.OTHER
                     .contains(entityType)) && flagContainer.getFlag(MiscInteractFlag.class)
                     .getValue()) {
-                return;
+                return InteractionResult.PASS;
             }
 
             if (!pp.hasPermission(Permission.PERMISSION_ADMIN_INTERACT_OTHER)) {
@@ -1635,21 +1825,21 @@ public class PlayerEventListener {
                                 Tag.inserting(Permission.PERMISSION_ADMIN_INTERACT_OTHER)
                         )
                 );
-                event.setCancelled(true);
+                return InteractionResult.FAIL;
             }
         }
+        return InteractionResult.PASS;
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onVehicleDestroy(VehicleDestroyEvent event) {
-        Location location = BukkitUtil.adapt(event.getVehicle().getLocation());
+    public InteractionResult onVehicleDestroy(LivingEntity entity, DamageSource damageSource) {
+        Location location = FabricUtil.adapt(GlobalPos.of(entity.level().dimension(), entity.blockPosition()));
         PlotArea area = location.getPlotArea();
         if (area == null) {
-            return;
+            return InteractionResult.PASS;
         }
-        Entity attacker = event.getAttacker();
-        if (attacker instanceof Player p) {
-            BukkitPlayer pp = BukkitUtil.adapt(p);
+        Entity attacker = damageSource.getEntity();
+        if (attacker instanceof ServerPlayer p) {
+            FabricPlayer pp = FabricUtil.adapt(p);
             Plot plot = area.getPlot(location);
             if (plot == null) {
                 if (!PlotFlagUtil.isAreaRoadFlagsAndFlagEquals(area, VehicleBreakFlag.class, true) && !pp.hasPermission(
@@ -1662,7 +1852,7 @@ public class PlayerEventListener {
                                     Tag.inserting(Permission.PERMISSION_ADMIN_DESTROY_VEHICLE_ROAD)
                             )
                     );
-                    event.setCancelled(true);
+                    return InteractionResult.FAIL;
                 }
             } else {
                 if (!plot.hasOwner()) {
@@ -1674,14 +1864,13 @@ public class PlayerEventListener {
                                         Tag.inserting(Permission.PERMISSION_ADMIN_DESTROY_VEHICLE_UNOWNED)
                                 )
                         );
-                        event.setCancelled(true);
-                        return;
+                        return InteractionResult.FAIL;
                     }
-                    return;
+                    return InteractionResult.PASS;
                 }
                 if (!plot.isAdded(pp.getUUID())) {
                     if (plot.getFlag(VehicleBreakFlag.class)) {
-                        return;
+                        return InteractionResult.PASS;
                     }
                     if (!pp.hasPermission(Permission.PERMISSION_ADMIN_DESTROY_VEHICLE_OTHER)) {
                         pp.sendMessage(
@@ -1691,136 +1880,179 @@ public class PlayerEventListener {
                                         Tag.inserting(Permission.PERMISSION_ADMIN_DESTROY_VEHICLE_OTHER)
                                 )
                         );
-                        event.setCancelled(true);
                         plot.debug(pp.getName()
                                 + " could not break vehicle because vehicle-break = false");
+                        return InteractionResult.FAIL;
                     }
                 }
             }
         }
+        return InteractionResult.PASS;
     }
 
-    @EventHandler
-    public void onItemDrop(PlayerDropItemEvent event) {
-        Player player = event.getPlayer();
-        BukkitPlayer pp = BukkitUtil.adapt(player);
+    public InteractionResult onItemDrop(ServerPlayer serverPlayer, int Slot, ItemStack itemStack) {
+        ServerPlayer player = serverPlayer;
+        FabricPlayer pp = FabricUtil.adapt(player);
         Location location = pp.getLocation();
         PlotArea area = location.getPlotArea();
         if (area == null) {
-            return;
+            return InteractionResult.PASS;
         }
         Plot plot = location.getOwnedPlot();
         if (plot == null) {
             if (PlotFlagUtil.isAreaRoadFlagsAndFlagEquals(area, ItemDropFlag.class, false)) {
-                event.setCancelled(true);
+                return InteractionResult.FAIL;
             }
-            return;
+            return InteractionResult.PASS;
         }
         UUID uuid = pp.getUUID();
         if (!plot.isAdded(uuid)) {
             if (!plot.getFlag(ItemDropFlag.class)) {
                 plot.debug(player.getName() + " could not drop item because of item-drop = false");
-                event.setCancelled(true);
+                return InteractionResult.FAIL;
             }
         }
+        return InteractionResult.PASS;
     }
 
-    @EventHandler
-    public void onItemPickup(EntityPickupItemEvent event) {
-        LivingEntity ent = event.getEntity();
-        if (ent instanceof Player player) {
-            BukkitPlayer pp = BukkitUtil.adapt(player);
-            Location location = pp.getLocation();
-            PlotArea area = location.getPlotArea();
-            if (area == null) {
-                return;
-            }
-            Plot plot = location.getOwnedPlot();
-            if (plot == null) {
-                if (PlotFlagUtil.isAreaRoadFlagsAndFlagEquals(area, DropProtectionFlag.class, true)) {
-                    event.setCancelled(true);
-                }
-                return;
-            }
-            UUID uuid = pp.getUUID();
-            if (!plot.isAdded(uuid) && plot.getFlag(DropProtectionFlag.class)) {
-                plot.debug(player.getName() + " could not pick up item because of drop-protection = true");
-                event.setCancelled(true);
-            }
-        }
-    }
-
-    @EventHandler
-    public void onDeath(final PlayerDeathEvent event) {
-        Location location = BukkitUtil.adapt(event.getEntity().getLocation());
+    public InteractionResult onItemPickup(ServerPlayer player, ItemEntity item, ItemStack itemStack) {
+        FabricPlayer pp = FabricUtil.adapt(player);
+        Location location = pp.getLocation();
         PlotArea area = location.getPlotArea();
         if (area == null) {
-            return;
+            return InteractionResult.PASS;
+        }
+        Plot plot = location.getOwnedPlot();
+        if (plot == null) {
+            if (PlotFlagUtil.isAreaRoadFlagsAndFlagEquals(area, DropProtectionFlag.class, true)) {
+                return InteractionResult.FAIL;
+            }
+            return InteractionResult.PASS;
+        }
+        UUID uuid = pp.getUUID();
+        if (!plot.isAdded(uuid) && plot.getFlag(DropProtectionFlag.class)) {
+            plot.debug(player.getName() + " could not pick up item because of drop-protection = true");
+            return InteractionResult.FAIL;
+        }
+        return InteractionResult.PASS;
+    }
+
+    public InteractionResult onDeath(ServerPlayer oldPlayer, ServerPlayer newPlayer, boolean alive) {
+        Location location = FabricUtil.adapt(GlobalPos.of(newPlayer.serverLevel().dimension(), newPlayer.blockPosition()));
+        PlotArea area = location.getPlotArea();
+        if (area == null) {
+            return InteractionResult.PASS;
         }
         Plot plot = location.getOwnedPlot();
         if (plot == null) {
             if (PlotFlagUtil.isAreaRoadFlagsAndFlagEquals(area, KeepInventoryFlag.class, true)) {
-                event.setCancelled(true);
+                return InteractionResult.FAIL;
             }
-            return;
+            return InteractionResult.PASS;
         }
         if (plot.getFlag(KeepInventoryFlag.class)) {
-            plot.debug(event.getEntity().getName() + " kept their inventory because of keep-inventory = true");
-            event.getDrops().clear();
-            event.setKeepInventory(true);
+            plot.debug(newPlayer.getName() + " kept their inventory because of keep-inventory = true");
+            newPlayer.getInventory().replaceWith(oldPlayer.getInventory());
+            return InteractionResult.FAIL;
         }
+        return InteractionResult.PASS;
     }
 
+    /*
     @SuppressWarnings("deprecation") // #getLocate is needed for Spigot compatibility
-    @EventHandler
     public void onLocaleChange(final PlayerLocaleChangeEvent event) {
         // The event is fired before the player is deemed online upon login
         if (!event.getPlayer().isOnline()) {
             return;
         }
-        BukkitPlayer player = BukkitUtil.adapt(event.getPlayer());
+        FabricPlayer player = FabricUtil.adapt(event.getPlayer());
         // we're stripping the country code as we don't want to differ between countries
         player.setLocale(Locale.forLanguageTag(event.getLocale().substring(0, 2)));
-    }
+    }*/
 
-    @EventHandler
-    public void onPortalEnter(PlayerPortalEvent event) {
-        Location location = BukkitUtil.adapt(event.getPlayer().getLocation());
-        PlotArea area = location.getPlotArea();
-        if (area == null) {
-            return;
-        }
-        Plot plot = location.getOwnedPlot();
-        if (plot == null) {
-            if (PlotFlagUtil.isAreaRoadFlagsAndFlagEquals(area, DenyPortalTravelFlag.class, true)) {
-                event.setCancelled(true);
+    public InteractionResult onPortalEnter(BlockPos blockPos, Entity entity) {
+        if (entity instanceof ServerPlayer serverPlayer) {
+            Location location = FabricUtil.adapt(GlobalPos.of(entity.level().dimension(), entity.blockPosition()));
+            PlotArea area = location.getPlotArea();
+            if (area == null) {
+                return InteractionResult.PASS;
             }
-            return;
+            Plot plot = location.getOwnedPlot();
+            if (plot == null) {
+                if (PlotFlagUtil.isAreaRoadFlagsAndFlagEquals(area, DenyPortalTravelFlag.class, true)) {
+                    return InteractionResult.FAIL;
+                }
+                return InteractionResult.PASS;
+            }
+            if (plot.getFlag(DenyPortalTravelFlag.class)) {
+                plot.debug(serverPlayer.getName() + " did not travel thru a portal because of deny-portal-travel = true");
+                return InteractionResult.FAIL;
+            }
         }
-        if (plot.getFlag(DenyPortalTravelFlag.class)) {
-            plot.debug(event.getPlayer().getName() + " did not travel thru a portal because of deny-portal-travel = true");
-            event.setCancelled(true);
-        }
+        return InteractionResult.PASS;
     }
 
-    @EventHandler
-    public void onPortalCreation(PortalCreateEvent event) {
-        String world = event.getWorld().getName();
-        if (PlotSquared.get().getPlotAreaManager().getPlotAreasSet(world).size() == 0) {
-            return;
+    public InteractionResult onNetherPortalCreation(
+            LevelAccessor levelAccessor,
+            BlockPos blockPos,
+            Direction.Axis axis,
+            Operation<Optional<PortalShape>> original
+    ) {
+        if(levelAccessor instanceof ServerLevel serverLevel) {
+            Location location = FabricUtil.adapt(GlobalPos.of(serverLevel.dimension(), blockPos));
+            PlotArea area = location.getPlotArea();
+            if (area == null) {
+                return InteractionResult.PASS;
+            }
+            Plot plot = location.getOwnedPlot();
+            if (plot == null) {
+                if (PlotFlagUtil.isAreaRoadFlagsAndFlagEquals(area, DenyPortalsFlag.class, true)) {
+                    return InteractionResult.FAIL;
+                }
+                return InteractionResult.PASS;
+            }
+            if (plot.getFlag(DenyPortalsFlag.class)) {
+                StringBuilder builder = new StringBuilder();
+                if (serverLevel.getServer().getPlayerList().getPlayer(plot.getOwner()) != null) {
+                    builder.append(serverLevel.getServer().getPlayerList().getPlayer(plot.getOwner()).getName()).append(" did not create a portal");
+                } else {
+                    builder.append("Portal creation cancelled");
+                }
+                plot.debug(builder.append(" because of deny-portals = true").toString());
+                return InteractionResult.FAIL;
+            }
+            return InteractionResult.PASS;
         }
-        BukkitPlayer pp = (event.getEntity() instanceof Player player) ? BukkitUtil.adapt(player) : null;
+        return InteractionResult.PASS;
+
+    }
+
+    public InteractionResult onEndPortalCreation(UseOnContext useOnContext, BlockPattern.BlockPatternMatch blockPatternMatch) {
+        String world =
+                useOnContext.getPlayer().getServer().getLevel(useOnContext.getLevel().dimension()).serverLevelData.getLevelName();
+        if (PlotSquared.get().getPlotAreaManager().getPlotAreasSet(world).size() == 0) {
+            return InteractionResult.FAIL;
+        }
+        FabricPlayer pp = (useOnContext.getPlayer() instanceof ServerPlayer player) ? FabricUtil.adapt(player) : null;
         int minX = Integer.MAX_VALUE;
         int maxX = Integer.MIN_VALUE;
         int minZ = Integer.MAX_VALUE;
         int maxZ = Integer.MIN_VALUE;
-        for (BlockState state : event.getBlocks()) {
-            minX = Math.min(state.getX(), minX);
-            maxX = Math.max(state.getX(), maxX);
-            minZ = Math.min(state.getZ(), minZ);
-            maxZ = Math.max(state.getZ(), maxZ);
+        for (BlockInWorld state : blockPatternMatch.cache.asMap().values()) {
+            minX = Math.min(state.getPos().getX(), minX);
+            maxX = Math.max(state.getPos().getX(), maxX);
+            minZ = Math.min(state.getPos().getZ(), minZ);
+            maxZ = Math.max(state.getPos().getZ(), maxZ);
         }
-        int y = event.getBlocks().get(0).getY(); // Don't need to worry about this too much
+        int y = blockPatternMatch.cache
+                .asMap()
+                .values()
+                .stream()
+                .findFirst()
+                .get()
+                .getPos()
+                .getY(); // Don't need to worry about this
+        // too much
         for (Location location : List.of( // We don't care about duplicate locations
                 Location.at(world, minX, y, minZ),
                 Location.at(world, minX, y, maxZ),
@@ -1832,53 +2064,50 @@ public class PlayerEventListener {
                 continue;
             }
             if (area.notifyIfOutsideBuildArea(pp, location.getY())) {
-                event.setCancelled(true);
-                return;
+                return InteractionResult.FAIL;
             }
             Plot plot = location.getOwnedPlot();
             if (plot == null) {
                 if (PlotFlagUtil.isAreaRoadFlagsAndFlagEquals(area, DenyPortalsFlag.class, true)) {
-                    event.setCancelled(true);
-                    return;
+                    return InteractionResult.FAIL;
                 }
                 continue;
             }
             if (plot.getFlag(DenyPortalsFlag.class)) {
                 StringBuilder builder = new StringBuilder();
-                if (event.getEntity() != null) {
-                    builder.append(event.getEntity().getName()).append(" did not create a portal");
+                if (useOnContext.getPlayer() != null) {
+                    builder.append(useOnContext.getPlayer().getName()).append(" did not create a portal");
                 } else {
                     builder.append("Portal creation cancelled");
                 }
                 plot.debug(builder.append(" because of deny-portals = true").toString());
-                event.setCancelled(true);
-                return;
+                return InteractionResult.FAIL;
             }
         }
+        return InteractionResult.PASS;
     }
 
-    @EventHandler
-    public void onPlayerTakeLecternBook(PlayerTakeLecternBookEvent event) {
-        Player player = event.getPlayer();
-        BukkitPlayer pp = BukkitUtil.adapt(player);
+    public InteractionResult onPlayerTakeLecternBook(ServerboundContainerButtonClickPacket serverboundContainerButtonClickPacket, ServerPlayer player) {
+        FabricPlayer pp = FabricUtil.adapt(player);
         Location location = pp.getLocation();
         PlotArea area = location.getPlotArea();
         if (area == null) {
-            return;
+            return InteractionResult.PASS;
         }
         Plot plot = location.getOwnedPlot();
         if (plot == null) {
             if (PlotFlagUtil.isAreaRoadFlagsAndFlagEquals(area, LecternReadBookFlag.class, true)) {
-                event.setCancelled(true);
+                return InteractionResult.FAIL;
             }
-            return;
+            return InteractionResult.PASS;
         }
         if (!plot.isAdded(pp.getUUID())) {
             if (plot.getFlag(LecternReadBookFlag.class)) {
-                plot.debug(event.getPlayer().getName() + " could not take the book because of lectern-read-book = true");
-                event.setCancelled(true);
+                plot.debug(player.getName() + " could not take the book because of lectern-read-book = true");
+                return InteractionResult.FAIL;
             }
         }
+        return InteractionResult.PASS;
     }
 
 }

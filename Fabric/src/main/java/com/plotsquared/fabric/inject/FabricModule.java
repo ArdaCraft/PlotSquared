@@ -86,13 +86,13 @@ public class FabricModule extends AbstractModule {
                 .implement(ProgressSubscriber.class, DefaultProgressSubscriber.class)
                 .build(ProgressSubscriberFactory.class));
         bind(ChunkManager.class).to(FabricChunkManager.class);
-        /*if (PlotSquared.platform().isFaweHooking()) {
+        if (PlotSquared.platform().isFaweHooking()) {
             bind(SchematicHandler.class).to(FaweSchematicHandler.class);
             bind(RegionManager.class).to(FaweRegionManager.class);
-        } else {*/
+        } else {
             bind(SchematicHandler.class).to(FabricSchematicHandler.class);
             bind(RegionManager.class).to(FabricRegionManager.class);
-        //}
+        }
         bind(GlobalBlockQueue.class).toInstance(new GlobalBlockQueue(QueueProvider.of(FabricQueueCoordinator.class)));
         if (Settings.Enabled_Components.WORLDS) {
             bind(PlotAreaManager.class).to(SinglePlotAreaManager.class);

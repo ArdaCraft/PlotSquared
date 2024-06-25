@@ -20,7 +20,9 @@ package com.plotsquared.fabric.schematic;
 
 import com.destroystokyo.paper.profile.PlayerProfile;
 import com.destroystokyo.paper.profile.ProfileProperty;
+import com.google.common.base.Preconditions;
 import com.plotsquared.bukkit.util.BukkitUtil;
+import com.plotsquared.fabric.util.FabricUtil;
 import com.sk89q.jnbt.ByteTag;
 import com.sk89q.jnbt.CompoundTag;
 import com.sk89q.jnbt.ListTag;
@@ -31,6 +33,15 @@ import com.sk89q.worldedit.blocks.BaseItemStack;
 import com.sk89q.worldedit.bukkit.BukkitAdapter;
 import com.sk89q.worldedit.world.item.ItemType;
 import io.papermc.lib.PaperLib;
+import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.Container;
+import net.minecraft.world.entity.vehicle.ContainerEntity;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.BeaconBlock;
+import net.minecraft.world.level.block.ChestBlock;
+import net.minecraft.world.level.block.FurnaceBlock;
+import net.minecraft.world.level.block.state.BlockState;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bukkit.Bukkit;
@@ -48,6 +59,7 @@ import org.bukkit.enchantments.Enchantment;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.checkerframework.checker.nullness.qual.NonNull;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -166,8 +178,22 @@ public class StateWrapper {
                 .replace("\"underlined\":true,", "&n").replace("\"italic\":true,", "&o")
                 .replace("[{\"text\":\"", "&0").replace("{\"text\":\"", "&0").replace("\"},", "")
                 .replace("\"}]", "").replace("\"}", "");
-        str = ChatColor.translateAlternateColorCodes('&', str);
+        str = translateAlternateColorCodes('&', str);
         return str;
+    }
+
+    public static @NotNull String translateAlternateColorCodes(char altColorChar, @NotNull String textToTranslate) {
+        Preconditions.checkArgument(textToTranslate != null, "Cannot translate null text");
+        char[] b = textToTranslate.toCharArray();
+
+        for(int i = 0; i < b.length - 1; ++i) {
+            if (b[i] == altColorChar && "0123456789AaBbCcDdEeFfKkLlMmNnOoRrXx".indexOf(b[i + 1]) > -1) {
+                b[i] = 167;
+                b[i + 1] = Character.toLowerCase(b[i + 1]);
+            }
+        }
+
+        return new String(b);
     }
 
     /**
@@ -180,11 +206,11 @@ public class StateWrapper {
      * @return true if successful
      */
     public boolean restoreTag(String worldName, int x, int y, int z) {
-        World world = BukkitUtil.getWorld(worldName);
+        ServerLevel world = FabricUtil.getWorld(worldName);
         if (world == null) {
             return false;
         }
-        return restoreTag(world.getBlockAt(x, y, z));
+        return restoreTag(world.getBlockState(new BlockPos(x, y, z)));
     }
 
     /**
@@ -194,14 +220,14 @@ public class StateWrapper {
      * @return true if successful
      */
     @SuppressWarnings("deprecation") // #setLine is needed for Spigot compatibility
-    public boolean restoreTag(@NonNull Block block) {
+    public boolean restoreTag(@NonNull BlockState block) {
         if (this.tag == null) {
             return false;
         }
-        org.bukkit.block.BlockState state = block.getState();
+        BlockState state = block;
         switch (getId()) {
             case "chest", "beacon", "brewingstand", "dispenser", "dropper", "furnace", "hopper", "shulkerbox" -> {
-                if (!(state instanceof Container container)) {
+                if (!(state.getBlock() instanceof FurnaceBlock)) {
                     return false;
                 }
                 List<Tag> itemsTag = this.tag.getListTag("Items").getValue();

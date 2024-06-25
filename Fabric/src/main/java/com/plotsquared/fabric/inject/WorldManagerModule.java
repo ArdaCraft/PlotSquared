@@ -18,7 +18,7 @@ public class WorldManagerModule extends AbstractModule {
         if (FabricLoader.getInstance().isModLoaded("multiworld")) {
             return new MultiworldDimensionManager();
         } else {
-            return new FabricDimensionManager();
+            throw new RuntimeException("MULTIWORLD MOD NOT LOADED");
         }
     }
 
