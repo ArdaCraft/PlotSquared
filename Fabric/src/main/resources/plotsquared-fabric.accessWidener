@@ -10,3 +10,7 @@ accessible method net/minecraft/network/protocol/game/ServerboundInteractPacket$
 accessible class net/minecraft/network/protocol/game/ServerboundInteractPacket$ActionType
 accessible field net/minecraft/world/level/block/state/pattern/BlockPattern$BlockPatternMatch cache Lcom/google/common/cache/LoadingCache;
 accessible field net/minecraft/world/entity/animal/horse/Horse$HorseGroupData variant Lnet/minecraft/world/entity/animal/horse/Variant;
+accessible field net/minecraft/world/level/biome/BiomeManager noiseBiomeSource Lnet/minecraft/world/level/biome/BiomeManager$NoiseBiomeSource;
+accessible field net/minecraft/world/entity/animal/horse/Horse DATA_ID_TYPE_VARIANT Lnet/minecraft/network/syncher/EntityDataAccessor;
+accessible field net/minecraft/world/level/block/AbstractCauldronBlock interactions Ljava/util/Map;
+accessible field net/minecraft/world/level/chunk/LevelChunk loaded Z

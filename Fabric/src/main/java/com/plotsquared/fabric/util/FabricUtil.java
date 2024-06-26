@@ -80,6 +80,7 @@ import net.minecraft.world.level.block.entity.SignText;
 import net.minecraft.world.level.block.state.properties.WoodType;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.phys.AABB;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.checkerframework.checker.index.qual.NonNegative;
@@ -90,6 +91,7 @@ import org.jetbrains.annotations.NotNull;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -102,7 +104,7 @@ public class FabricUtil extends WorldUtil {
 
     public static final FabricServerAudiences FABRIC_AUDIENCES =
             FabricServerAudiences.of(FabricPlatform.SERVER);
-    public static final LegacyComponentSerializer LEGACY_COMPONENT_SERIALIZER = LegacyComponentSerializer.legacy();
+    public static final LegacyComponentSerializer LEGACY_COMPONENT_SERIALIZER = LegacyComponentSerializer.legacyAmpersand();
     public static final MiniMessage MINI_MESSAGE = MiniMessage.builder().build();
     private static final Logger LOGGER = LogManager.getLogger("PlotSquared/" + FabricUtil.class.getSimpleName());
     private final Collection<BlockType> tileEntityTypes = new HashSet<>();
@@ -618,4 +620,13 @@ public class FabricUtil extends WorldUtil {
         return chunks;
     }
 
+    public static List<Entity> getEntitiesInChunk(ServerLevel world, LevelChunk chunk) {
+        return world.getEntitiesOfClass(
+                Entity.class,
+                new AABB(chunk.getPos().getMinBlockX(), chunk.getMaxBuildHeight(), chunk.getPos().getMinBlockZ(),
+                        chunk.getPos().getMaxBlockX(), chunk.getMaxBuildHeight(), chunk.getPos().getMaxBlockZ()
+                ),
+                entity -> true
+        );
+    }
 }

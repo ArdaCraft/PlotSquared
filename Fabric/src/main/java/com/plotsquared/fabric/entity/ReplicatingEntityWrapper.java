@@ -17,44 +17,34 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package com.plotsquared.fabric.entity;
-
+/*
 import com.plotsquared.core.configuration.Settings;
+import com.plotsquared.core.location.Direction;
+import com.plotsquared.core.location.Location;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.AgeableMob;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.OwnableEntity;
+import net.minecraft.world.entity.animal.horse.AbstractChestedHorse;
+import net.minecraft.world.entity.animal.horse.AbstractHorse;
 import net.minecraft.world.entity.decoration.ItemFrame;
+import net.minecraft.world.entity.decoration.Painting;
+import net.minecraft.world.entity.decoration.PaintingVariant;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.monster.Slime;
+import net.minecraft.world.entity.vehicle.Boat;
+import net.minecraft.world.entity.vehicle.ContainerEntity;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.Rotation;
+import net.minecraft.world.level.block.state.properties.WoodType;
+import net.minecraft.world.phys.Vec3;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.bukkit.Art;
-import org.bukkit.DyeColor;
-import org.bukkit.Location;
-import org.bukkit.Rotation;
-import org.bukkit.TreeSpecies;
-import org.bukkit.World;
-import org.bukkit.block.BlockFace;
-import org.bukkit.entity.AbstractHorse;
-import org.bukkit.entity.Ageable;
-import org.bukkit.entity.ArmorStand;
-import org.bukkit.entity.Bat;
-import org.bukkit.entity.Boat;
-import org.bukkit.entity.Breedable;
-import org.bukkit.entity.ChestedHorse;
-import org.bukkit.entity.EnderDragon;
-import org.bukkit.entity.Entity;
-import org.bukkit.entity.IronGolem;
-import org.bukkit.entity.Item;
-import org.bukkit.entity.ItemFrame;
-import org.bukkit.entity.LivingEntity;
-import org.bukkit.entity.Painting;
-import org.bukkit.entity.Rabbit;
-import org.bukkit.entity.Sheep;
-import org.bukkit.entity.Slime;
-import org.bukkit.entity.Tameable;
-import org.bukkit.inventory.EntityEquipment;
-import org.bukkit.inventory.InventoryHolder;
-import org.bukkit.inventory.ItemStack;
-import org.bukkit.util.EulerAngle;
-import org.bukkit.util.Vector;
 
 import java.util.List;
+
 
 public final class ReplicatingEntityWrapper extends EntityWrapper {
 
@@ -81,7 +71,7 @@ public final class ReplicatingEntityWrapper extends EntityWrapper {
     public ReplicatingEntityWrapper(Entity entity, short depth) {
         super(entity);
 
-        this.hash = entity.getEntityId();
+        this.hash = entity.getId();
         this.depth = depth;
 
         if (depth == 0) {
@@ -91,23 +81,24 @@ public final class ReplicatingEntityWrapper extends EntityWrapper {
         if (passengers.size() > 0) {
             this.base.passenger = new ReplicatingEntityWrapper(passengers.get(0), depth);
         }
-        this.base.fall = entity.getFallDistance();
-        this.base.fire = (short) entity.getFireTicks();
-        this.base.age = entity.getTicksLived();
-        Vector velocity = entity.getVelocity();
-        this.base.vX = velocity.getX();
-        this.base.vY = velocity.getY();
-        this.base.vZ = velocity.getZ();
+        this.base.fall = entity.fallDistance;
+        this.base.fire = (short) entity.getRemainingFireTicks();
+        this.base.age = entity.tickCount;
+        Vec3 velocity = entity.getDeltaMovement();
+        this.base.vX = velocity.x;
+        this.base.vY = velocity.y;
+        this.base.vZ = velocity.z;
         if (depth == 1) {
             return;
         }
-        if (!entity.hasGravity()) {
+        if (entity.isNoGravity()) {
             this.noGravity = true;
         }
+        System.out.println(entity.getType());
         switch (entity.getType().toString()) {
             case "BOAT" -> {
                 Boat boat = (Boat) entity;
-                this.dataByte = getOrdinal(TreeSpecies.values(), boat.getWoodType());
+                this.dataByte = getOrdinal(Boat.Type.values(), boat.getVariant());
                 return;
             }
             case "ARROW", "EGG", "ENDER_CRYSTAL", "ENDER_PEARL", "ENDER_SIGNAL", "EXPERIENCE_ORB", "FALLING_BLOCK", "FIREBALL",
@@ -120,8 +111,8 @@ public final class ReplicatingEntityWrapper extends EntityWrapper {
             }
             // MISC //
             case "DROPPED_ITEM" -> {
-                Item item = (Item) entity;
-                this.stack = item.getItemStack();
+                ItemEntity item = (ItemEntity) entity;
+                this.stack = item.getItem();
                 return;
             }
             case "ITEM_FRAME" -> {
@@ -130,7 +121,7 @@ public final class ReplicatingEntityWrapper extends EntityWrapper {
                 this.z = Math.floor(this.getZ());
                 ItemFrame itemFrame = (ItemFrame) entity;
                 this.dataByte = getOrdinal(Rotation.values(), itemFrame.getRotation());
-                this.stack = itemFrame.getItem().clone();
+                this.stack = itemFrame.getItem();
                 return;
             }
             case "PAINTING" -> {
@@ -138,19 +129,19 @@ public final class ReplicatingEntityWrapper extends EntityWrapper {
                 this.y = Math.floor(this.getY());
                 this.z = Math.floor(this.getZ());
                 Painting painting = (Painting) entity;
-                Art art = painting.getArt();
-                this.dataByte = getOrdinal(BlockFace.values(), painting.getFacing());
-                int h = art.getBlockHeight();
+                PaintingVariant art = painting.getVariant().value();
+                this.dataByte = getOrdinal(Direction.values(), painting.getDirection());
+                int h = art.getHeight();
                 if (h % 2 == 0) {
                     this.y -= 1;
                 }
-                this.dataString = art.name();
+                this.dataString = art.toString();
                 return;
             }
             // END MISC //
             // INVENTORY HOLDER //
             case "MINECART_CHEST", "MINECART_HOPPER" -> {
-                storeInventory((InventoryHolder) entity);
+                storeInventory((ContainerEntity) entity);
                 return;
             }
             // START LIVING ENTITY //
@@ -159,9 +150,9 @@ public final class ReplicatingEntityWrapper extends EntityWrapper {
             case "HORSE", "DONKEY", "LLAMA", "MULE", "SKELETON_HORSE" -> {
                 AbstractHorse horse = (AbstractHorse) entity;
                 this.horse = new HorseStats();
-                this.horse.jump = horse.getJumpStrength();
-                if (horse instanceof ChestedHorse horse1) {
-                    this.horse.chest = horse1.isCarryingChest();
+                this.horse.jump = horse.getCustomJump();
+                if (horse instanceof AbstractChestedHorse horse1) {
+                    this.horse.chest = horse1.hasChest();
                 }
                 //todo these horse features need fixing
                 //this.horse.variant = horse.getVariant();
@@ -296,8 +287,8 @@ public final class ReplicatingEntityWrapper extends EntityWrapper {
         return this.hash;
     }
 
-    public void storeInventory(InventoryHolder held) {
-        this.inventory = held.getInventory().getContents().clone();
+    public void storeInventory(ContainerEntity held) {
+        this.inventory = (ItemStack[]) held.getItemStacks().toArray().clone();
     }
 
     void restoreLiving(LivingEntity entity) {
@@ -389,7 +380,7 @@ public final class ReplicatingEntityWrapper extends EntityWrapper {
      * @deprecated Use {@link #restoreBreedable(Breedable)} instead
      * @since 7.1.0
      */
-    @Deprecated(forRemoval = true, since = "7.1.0")
+   /* @Deprecated(forRemoval = true, since = "7.1.0")
     private void restoreAgeable(Ageable entity) {
         if (!this.aged.adult) {
             entity.setBaby();
@@ -404,22 +395,22 @@ public final class ReplicatingEntityWrapper extends EntityWrapper {
      * @deprecated Use {@link #storeBreedable(Breedable)} instead
      * @since 7.1.0
      */
-    @Deprecated(forRemoval = true, since = "7.1.0")
-    public void storeAgeable(Ageable aged) {
+    /*@Deprecated(forRemoval = true, since = "7.1.0")
+    public void storeAgeable(AgeableMob aged) {
         this.aged = new AgeableStats();
         this.aged.age = aged.getAge();
-        this.aged.locked = aged.getAgeLock();
-        this.aged.adult = aged.isAdult();
+        this.aged.locked = aged.isAlwaysTicking();
+        this.aged.adult = !aged.isBaby();
     }
 
     /**
      * @since 7.1.0
      */
-    private void restoreBreedable(Breedable entity) {
+    /*private void restoreBreedable(AgeableMob entity) {
         if (!this.aged.adult) {
-            entity.setBaby();
+            entity.setBaby(false);
         }
-        entity.setAgeLock(this.aged.locked);
+        entity.set(this.aged.locked);
         if (this.aged.age > 0) {
             entity.setAge(this.aged.age);
         }
@@ -428,22 +419,22 @@ public final class ReplicatingEntityWrapper extends EntityWrapper {
     /**
      * @since 7.1.0
      */
-    private void storeBreedable(Breedable breedable) {
+    /*private void storeBreedable(AgeableMob breedable) {
         this.aged = new AgeableStats();
         this.aged.age = breedable.getAge();
-        this.aged.locked = breedable.getAgeLock();
+        this.aged.locked = breedable.isAlive();
         this.aged.adult = breedable.isAdult();
     }
 
-    public void storeTameable(Tameable tamed) {
+    public void storeTameable(OwnableEntity tamed) {
         this.tamed = new TameableStats();
         this.tamed.owner = tamed.getOwner();
-        this.tamed.tamed = tamed.isTamed();
+        this.tamed.tamed = tamed.getOwner() != null;
     }
 
     @SuppressWarnings("deprecation") // Paper deprecation
     @Override
-    public Entity spawn(World world, int xOffset, int zOffset) {
+    public Entity spawn(ServerLevel world, int xOffset, int zOffset) {
         Location location = new Location(world, this.getX() + xOffset, this.getY(), this.z + zOffset);
         location.setYaw(this.yaw);
         location.setPitch(this.pitch);
@@ -472,29 +463,29 @@ public final class ReplicatingEntityWrapper extends EntityWrapper {
             }
         }
         if (this.base.fall != 0) {
-            entity.setFallDistance(this.base.fall);
+            entity.fallDistance = this.base.fall;
         }
         if (this.base.fire != 0) {
-            entity.setFireTicks(this.base.fire);
+            entity.setRemainingFireTicks(this.base.fire);
         }
         if (this.base.age != 0) {
-            entity.setTicksLived(this.base.age);
+            entity.tickCount = this.base.age;
         }
-        entity.setVelocity(new Vector(this.base.vX, this.base.vY, this.base.vZ));
+        entity.setDeltaMovement(new Vec3(this.base.vX, this.base.vY, this.base.vZ));
         if (this.depth == 1) {
             return entity;
         }
         if (this.noGravity) {
-            entity.setGravity(false);
+            entity.setNoGravity(true);
         }
         switch (entity.getType().toString()) {
             case "BOAT" -> {
                 Boat boat = (Boat) entity;
-                boat.setWoodType(TreeSpecies.values()[dataByte]);
+                boat.setVariant(Boat.Type.values()[dataByte]);
                 return entity;
             }
             case "SLIME" -> {
-                ((Slime) entity).setSize(this.dataByte);
+                ((Slime) entity).setSize(this.dataByte, true);
                 return entity;
             }
             case "ARROW", "EGG", "ENDER_CRYSTAL", "ENDER_PEARL", "ENDER_SIGNAL", "DROPPED_ITEM", "EXPERIENCE_ORB", "FALLING_BLOCK",
@@ -696,4 +687,4 @@ public final class ReplicatingEntityWrapper extends EntityWrapper {
     }
 
 
-}
+}*/

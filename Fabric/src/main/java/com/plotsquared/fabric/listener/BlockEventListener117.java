@@ -19,8 +19,6 @@
 package com.plotsquared.fabric.listener;
 
 import com.google.inject.Inject;
-import com.plotsquared.bukkit.player.BukkitPlayer;
-import com.plotsquared.bukkit.util.BukkitUtil;
 import com.plotsquared.core.location.Location;
 import com.plotsquared.core.plot.Plot;
 import com.plotsquared.core.plot.PlotArea;
@@ -28,26 +26,14 @@ import com.plotsquared.core.plot.flag.implementations.CopperOxideFlag;
 import com.plotsquared.core.plot.flag.implementations.MiscInteractFlag;
 import com.plotsquared.core.plot.flag.implementations.SculkSensorInteractFlag;
 import com.plotsquared.core.util.PlotFlagUtil;
-import org.bukkit.Material;
-import org.bukkit.block.Block;
-import org.bukkit.entity.Entity;
-import org.bukkit.entity.Item;
-import org.bukkit.entity.Player;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.EventPriority;
-import org.bukkit.event.Listener;
-import org.bukkit.event.block.BlockFertilizeEvent;
-import org.bukkit.event.block.BlockFormEvent;
-import org.bukkit.event.block.BlockReceiveGameEvent;
 
-import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
 @SuppressWarnings("unused")
-public class BlockEventListener117 implements Listener {
-
+public class BlockEventListener117  {
+/*
     private static final Set<Material> COPPER_OXIDIZING = Set.of(
             Material.COPPER_BLOCK,
             Material.EXPOSED_COPPER,
@@ -65,13 +51,13 @@ public class BlockEventListener117 implements Listener {
             Material.EXPOSED_CUT_COPPER_SLAB,
             Material.WEATHERED_CUT_COPPER_SLAB,
             Material.OXIDIZED_CUT_COPPER_SLAB
-    );
+    );*/
 
     @Inject
     public BlockEventListener117() {
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+   /* @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onBlockReceiveGame(BlockReceiveGameEvent event) {
         Block block = event.getBlock();
         Location location = BukkitUtil.adapt(block.getLocation());
@@ -191,5 +177,5 @@ public class BlockEventListener117 implements Listener {
             }
         }
     }
-
+*/
 }

@@ -17,7 +17,7 @@ import com.plotsquared.core.util.RegionManager;
 import com.plotsquared.core.util.WorldUtil;
 import com.plotsquared.core.util.entity.EntityCategories;
 import com.plotsquared.core.util.task.RunnableVal;
-import com.sk89q.worldedit.fabric.FabricAdapter;
+import com.plotsquared.fabric.data.PlotSquaredDataAttachments;
 import com.sk89q.worldedit.fabric.FabricWorld;
 import com.sk89q.worldedit.regions.CuboidRegion;
 import com.sk89q.worldedit.world.block.BaseBlock;
@@ -35,7 +35,6 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
@@ -129,7 +128,7 @@ public class FabricRegionManager extends RegionManager {
             for (LevelChunk chunk : chunks) {
                 int X = chunk.getPos().x;
                 int Z = chunk.getPos().z;
-                Entity[] entities1 = getEntitiesInCHunk(world, chunk).toArray(new Entity[0]);
+                Entity[] entities1 = FabricUtil.getEntitiesInChunk(world, chunk).toArray(new Entity[0]);
                 for (Entity entity : entities1) {
                     if (X == bx || X == tx || Z == bz || Z == tz) {
                         Plot other = area.getPlot(FabricUtil.adapt(GlobalPos.of(
@@ -146,16 +145,6 @@ public class FabricRegionManager extends RegionManager {
             }
         }
         return count;
-    }
-
-    public List<Entity> getEntitiesInCHunk(ServerLevel world, LevelChunk chunk) {
-        return world.getEntitiesOfClass(
-                Entity.class,
-                new AABB(chunk.getPos().getMinBlockX(), chunk.getMaxBuildHeight(), chunk.getPos().getMinBlockZ(),
-                        chunk.getPos().getMaxBlockX(), chunk.getMaxBuildHeight(), chunk.getPos().getMaxBlockZ()
-                ),
-                entity -> true
-        );
     }
 
     @Override
@@ -251,7 +240,7 @@ public class FabricRegionManager extends RegionManager {
                 map.saveRegion(world, xxt2, xxt, zzt2, zzt); //
             }
             CuboidRegion currentPlotClear = new CuboidRegion(pos1.getBlockVector3(), pos2.getBlockVector3());
-            map.saveEntitiesOut(getWorld(world.getName()).getChunk(x,z), currentPlotClear);
+            map.saveEntitiesOut(getWorld(world.getName()), getWorld(world.getName()).getChunk(x,z), currentPlotClear);
             AugmentedUtils.bypass(
                     ignoreAugment,
                     () -> ChunkManager.setChunkInPlotArea(null, new RunnableVal<ZeroedDelegateScopedQueueCoordinator>() {
@@ -310,7 +299,7 @@ public class FabricRegionManager extends RegionManager {
             if (!(entity instanceof ServerPlayer)) {
                 GlobalPos location = GlobalPos.of(entity.level().dimension(), entity.blockPosition());
                 if (location.pos().getX() >= bx && location.pos().getX() <= tx && location.pos().getZ() >= bz && location.pos().getZ() <= tz) {
-                    if (entity.hasAttached("ps-tmp-teleport")) {
+                    if (entity.hasAttached(PlotSquaredDataAttachments.PS_TMP_TELEPORT)) {
                         continue;
                     }
                     entity.remove(Entity.RemovalReason.DISCARDED);

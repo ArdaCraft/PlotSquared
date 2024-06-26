@@ -46,11 +46,8 @@ import com.plotsquared.fabric.util.FabricInventoryUtil;
 import com.plotsquared.fabric.util.FabricRegionManager;
 import com.plotsquared.fabric.util.FabricSetupUtils;
 import com.plotsquared.fabric.util.FabricUtil;
-import com.plotsquared.fabric.util.fawe.FaweRegionManager;
-import com.plotsquared.fabric.util.fawe.FaweSchematicHandler;
 import com.sk89q.worldedit.extension.platform.Actor;
 import com.sk89q.worldedit.fabric.FabricAdapter;
-import com.sk89q.worldedit.fabric.FabricWorldEdit;
 import net.fabricmc.api.ModInitializer;
 import net.minecraft.commands.CommandSourceStack;
 import org.apache.logging.log4j.LogManager;
@@ -86,13 +83,14 @@ public class FabricModule extends AbstractModule {
                 .implement(ProgressSubscriber.class, DefaultProgressSubscriber.class)
                 .build(ProgressSubscriberFactory.class));
         bind(ChunkManager.class).to(FabricChunkManager.class);
+        /*
         if (PlotSquared.platform().isFaweHooking()) {
             bind(SchematicHandler.class).to(FaweSchematicHandler.class);
             bind(RegionManager.class).to(FaweRegionManager.class);
-        } else {
+        } else {*/
             bind(SchematicHandler.class).to(FabricSchematicHandler.class);
             bind(RegionManager.class).to(FabricRegionManager.class);
-        }
+        //}
         bind(GlobalBlockQueue.class).toInstance(new GlobalBlockQueue(QueueProvider.of(FabricQueueCoordinator.class)));
         if (Settings.Enabled_Components.WORLDS) {
             bind(PlotAreaManager.class).to(SinglePlotAreaManager.class);

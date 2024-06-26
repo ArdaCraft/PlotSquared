@@ -40,12 +40,25 @@ import com.plotsquared.core.plot.flag.implementations.TamedAttackFlag;
 import com.plotsquared.core.plot.flag.implementations.VehicleCapFlag;
 import com.plotsquared.core.util.EntityUtil;
 import com.plotsquared.core.util.entity.EntityCategories;
+import com.plotsquared.fabric.player.FabricPlayer;
+import com.sk89q.worldedit.fabric.FabricAdapter;
+import com.sk89q.worldedit.world.entity.EntityTypes;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.tag.Tag;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 import net.minecraft.core.GlobalPos;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.damagesource.DamageSources;
+import net.minecraft.world.damagesource.DamageType;
+import net.minecraft.world.damagesource.DamageTypes;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.animal.Animal;
+import net.minecraft.world.entity.projectile.Arrow;
+import net.minecraft.world.entity.projectile.Projectile;
+import net.minecraft.world.level.block.DispenserBlock;
+import net.minecraft.world.level.block.entity.DispenserBlockEntity;
 
 
 import java.util.Objects;
@@ -98,8 +111,8 @@ public class FabricEntityUtil {
             isPlot = false;
         } else {
             // Prioritize plots for close to seamless pvp zones
-            if (victim.tickCount > damager.getTicksLived()) {
-                if (dplot == null || !(victim instanceof Player)) {
+            if (victim.tickCount > damager.tickCount) {
+                if (dplot == null || !(victim instanceof ServerPlayer)) {
                     if (vplot == null) {
                         plot = dplot;
                     } else {
@@ -108,7 +121,7 @@ public class FabricEntityUtil {
                 } else {
                     plot = dplot;
                 }
-            } else if (dplot == null || !(victim instanceof Player)) {
+            } else if (dplot == null || !(victim instanceof ServerPlayer)) {
                 if (vplot == null) {
                     plot = dplot;
                 } else {
@@ -128,17 +141,17 @@ public class FabricEntityUtil {
         boolean roadFlags = vArea != null ? vArea.isRoadFlags() : dArea.isRoadFlags();
         PlotArea area = vArea != null ? vArea : dArea;
 
-        Player player;
-        if (damager instanceof Player) { // attacker is player
-            player = (Player) damager;
+        ServerPlayer player;
+        if (damager instanceof ServerPlayer) { // attacker is player
+            player = (ServerPlayer) damager;
         } else if (damager instanceof Projectile projectile) {
-            ProjectileSource shooter = projectile.getShooter();
-            if (shooter instanceof Player) { // shooter is player
-                player = (Player) shooter;
+            Entity shooter = projectile.getOwner();
+            if (shooter instanceof ServerPlayer) { // shooter is player
+                player = (ServerPlayer) shooter;
             } else { // shooter is not player
-                if (shooter instanceof BlockProjectileSource) {
+                if (shooter == null) {
                     Location sLoc = FabricUtil
-                            .adapt(((BlockProjectileSource) shooter).getBlock().getLocation());
+                            .adapt(GlobalPos.of(projectile.level().dimension(), projectile.blockPosition()));
                     dplot = dArea.getPlot(sLoc);
                 }
                 player = null;
@@ -147,15 +160,15 @@ public class FabricEntityUtil {
             player = null;
         }
         if (player != null) {
-            BukkitPlayer plotPlayer = FabricUtil.adapt(player);
+            FabricPlayer plotPlayer = FabricUtil.adapt(player);
 
             final com.sk89q.worldedit.world.entity.EntityType entityType;
 
             // Create a fake entity type if the type does not have a name
-            if (victim.getType().getName() == null) {
+            if (EntityTypes.get(victim.getType().toShortString()) == null) {
                 entityType = FAKE_ENTITY_TYPE;
             } else {
-                entityType = BukkitAdapter.adapt(victim.getType());
+                entityType = EntityTypes.get(victim.getType().toShortString());
             }
 
             if (EntityCategories.HANGING.contains(entityType)) { // hanging
@@ -334,8 +347,8 @@ public class FabricEntityUtil {
         }
         //disable the firework damage. too much of a headache to support at the moment.
         if (vplot != null) {
-            if (EntityDamageEvent.DamageCause.ENTITY_EXPLOSION == cause
-                    && damager.getType() == EntityType.FIREWORK) {
+            if (cause.is(DamageTypes.FIREWORKS)
+                    && damager.getType() == EntityType.FIREWORK_ROCKET) {
                 return false;
             }
         }
@@ -343,7 +356,7 @@ public class FabricEntityUtil {
             return true;
         }
         return ((vplot != null && vplot.getFlag(PveFlag.class)) || !(damager instanceof Arrow
-                && !(victim instanceof Creature)));
+                && !(victim instanceof Animal)));
     }
 
     public static boolean checkEntity(Entity entity, Plot plot) {
@@ -353,7 +366,7 @@ public class FabricEntityUtil {
         }
 
         final com.sk89q.worldedit.world.entity.EntityType entityType =
-                BukkitAdapter.adapt(entity.getType());
+                EntityTypes.get(entity.getType().toShortString());
 
         if (EntityCategories.PLAYER.contains(entityType)) {
             return false;

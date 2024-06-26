@@ -19,44 +19,47 @@
 package com.plotsquared.fabric.listener;
 
 import com.google.inject.Inject;
-import com.plotsquared.bukkit.generator.BukkitPlotGenerator;
 import com.plotsquared.core.PlotSquared;
 import com.plotsquared.core.generator.GeneratorWrapper;
 import com.plotsquared.core.plot.world.PlotAreaManager;
 import com.plotsquared.core.plot.world.SinglePlotAreaManager;
-import org.bukkit.World;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.EventPriority;
-import org.bukkit.event.Listener;
-import org.bukkit.event.world.WorldInitEvent;
-import org.bukkit.generator.ChunkGenerator;
+import com.plotsquared.fabric.generator.FabricPlotGenerator;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerWorldEvents;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.TicketType;
+import net.minecraft.util.Unit;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.chunk.ChunkGenerator;
 import org.checkerframework.checker.nullness.qual.NonNull;
 
 @SuppressWarnings("unused")
-public class WorldEvents implements Listener {
+public class WorldEvents {
 
     private final PlotAreaManager plotAreaManager;
 
     @Inject
     public WorldEvents(final @NonNull PlotAreaManager plotAreaManager) {
         this.plotAreaManager = plotAreaManager;
+        ServerWorldEvents.LOAD.register((server, world) -> {
+
+        });
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onWorldInit(WorldInitEvent event) {
-        World world = event.getWorld();
-        String name = world.getName();
+    public void onWorldInit(MinecraftServer server, ServerLevel serverLevel) {
+        ServerLevel world = serverLevel;
+        String name = world.serverLevelData.getLevelName();
         if (this.plotAreaManager instanceof final SinglePlotAreaManager single) {
             if (single.isWorld(name)) {
-                world.setKeepSpawnInMemory(false);
+                world.getChunkSource().removeRegionTicket(TicketType.START, new ChunkPos(world.getSharedSpawnPos()), 11, Unit.INSTANCE);
                 return;
             }
         }
-        ChunkGenerator gen = world.getGenerator();
+        ChunkGenerator gen = world.getChunkSource().getGenerator();
         if (gen instanceof GeneratorWrapper) {
             PlotSquared.get().loadWorld(name, (GeneratorWrapper<?>) gen);
         } else {
-            PlotSquared.get().loadWorld(name, new BukkitPlotGenerator(name, gen, this.plotAreaManager));
+            PlotSquared.get().loadWorld(name, new FabricPlotGenerator(name, gen, this.plotAreaManager));
         }
     }
 

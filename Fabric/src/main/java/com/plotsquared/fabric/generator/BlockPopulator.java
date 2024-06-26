@@ -1,6 +1,7 @@
 package com.plotsquared.fabric.generator;
 
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.WorldGenRegion;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.LevelChunk;
 import org.jetbrains.annotations.NotNull;
@@ -17,6 +18,6 @@ public abstract class BlockPopulator {
     }
 
     public void populate(@NotNull ServerLevel worldInfo, @NotNull Random random, int chunkX, int chunkZ,
-                         @NotNull LimitedRegion limitedRegion) {
+                         @NotNull WorldGenRegion limitedRegion) {
     }
 }

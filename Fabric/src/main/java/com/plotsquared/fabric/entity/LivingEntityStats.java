@@ -18,8 +18,9 @@
  */
 package com.plotsquared.fabric.entity;
 
-import org.bukkit.inventory.ItemStack;
-import org.bukkit.potion.PotionEffect;
+
+import net.minecraft.world.effect.MobEffect;
+import net.minecraft.world.item.ItemStack;
 
 import java.util.Collection;
 
@@ -41,7 +42,7 @@ class LivingEntityStats {
     ItemStack boots;
     ItemStack leggings;
     ItemStack chestplate;
-    Collection<PotionEffect> potions;
+    Collection<MobEffect> potions;
     ItemStack offHand;
 
 }

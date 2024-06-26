@@ -1,5 +1,5 @@
 package com.plotsquared.fabric.util.fawe;
-
+/*
 import com.google.inject.Inject;
 import com.plotsquared.core.configuration.Settings;
 import com.plotsquared.core.generator.HybridPlotManager;
@@ -24,8 +24,6 @@ import java.util.Objects;
 import java.util.Set;
 
 public class FaweRegionManager extends FabricRegionManager {
-
-    private final FaweDelegateRegionManager delegate = new FaweDelegateRegionManager();
 
     @Inject
     public FaweRegionManager(WorldUtil worldUtil, GlobalBlockQueue blockQueue, ProgressSubscriberFactory subscriberFactory) {
@@ -102,3 +100,4 @@ public class FaweRegionManager extends FabricRegionManager {
     }
 
 }
+*/

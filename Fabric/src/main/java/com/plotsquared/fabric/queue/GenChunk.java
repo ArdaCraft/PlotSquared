@@ -25,17 +25,41 @@ import com.plotsquared.core.location.Location;
 import com.plotsquared.core.queue.ZeroedDelegateScopedQueueCoordinator;
 import com.plotsquared.core.util.ChunkUtil;
 import com.plotsquared.core.util.PatternUtil;
+import com.plotsquared.fabric.FabricPlatform;
+import com.plotsquared.fabric.util.FabricBlockUtil;
+import com.plotsquared.fabric.util.FabricUtil;
+import com.sk89q.worldedit.WorldEdit;
+import com.sk89q.worldedit.fabric.FabricAdapter;
+import com.sk89q.worldedit.fabric.FabricWorldEdit;
 import com.sk89q.worldedit.function.pattern.Pattern;
+import com.sk89q.worldedit.regions.CuboidRegion;
 import com.sk89q.worldedit.world.biome.BiomeType;
+import com.sk89q.worldedit.world.biome.BiomeTypes;
 import com.sk89q.worldedit.world.block.BaseBlock;
 import com.sk89q.worldedit.world.block.BlockState;
 import com.sk89q.worldedit.world.block.BlockTypes;
+import com.sk89q.worldedit.world.chunk.Chunk;
+import com.sk89q.worldedit.world.registry.BiomeRegistry;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.RegistryAccess;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.server.level.ChunkLevel;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.NoiseColumn;
 import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.biome.BiomeResolver;
+import net.minecraft.world.level.biome.Biomes;
+import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.levelgen.NoiseChunk;
+import net.minecraft.world.level.levelgen.blending.BlendingData;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.stream.Collectors;
 
 /**
  * Internal use only. Subject to changes at any time.
@@ -45,8 +69,7 @@ public class GenChunk extends ZeroedDelegateScopedQueueCoordinator {
 
     public final Biome[] biomes;
     public BlockState[][] result;
-    public BiomeGrid biomeGrid;
-    public Chunk chunk;
+    public LevelChunk chunk;
     public String world;
     public int chunkX;
     public int chunkZ;
@@ -59,10 +82,10 @@ public class GenChunk extends ZeroedDelegateScopedQueueCoordinator {
      */
     public GenChunk(int minY, int maxY) {
         super(null, Location.at("", 0, minY, 0), Location.at("", 15, maxY, 15));
-        this.biomes = Biome.values();
+        this.biomes = FabricPlatform.SERVER.registryAccess().registry(Registries.BIOME).get().stream().toList().toArray(new Biome[0]);
     }
 
-    public @Nullable ChunkData getChunkData() {
+    public @Nullable LevelChunk getChunkData() {
         return this.chunkData;
     }
 
@@ -71,15 +94,15 @@ public class GenChunk extends ZeroedDelegateScopedQueueCoordinator {
      *
      * @param chunkData Bukkit ChunkData
      */
-    public void setChunkData(@NonNull ChunkData chunkData) {
+    public void setChunkData(@NonNull LevelChunk chunkData) {
         this.chunkData = chunkData;
     }
 
-    public @NonNull Chunk getChunk() {
+    public @NonNull LevelChunk getChunk() {
         if (chunk == null) {
-            World worldObj = BukkitUtil.getWorld(world);
+            ServerLevel worldObj = FabricUtil.getWorld(world);
             if (worldObj != null) {
-                this.chunk = worldObj.getChunkAt(chunkX, chunkZ);
+                this.chunk = worldObj.getChunk(chunkX, chunkZ);
             }
         }
         return chunk;
@@ -90,7 +113,7 @@ public class GenChunk extends ZeroedDelegateScopedQueueCoordinator {
      *
      * @param chunk Bukkit Chunk
      */
-    public void setChunk(@NonNull Chunk chunk) {
+    public void setChunk(@NonNull LevelChunk chunk) {
         this.chunk = chunk;
     }
 
@@ -109,14 +132,10 @@ public class GenChunk extends ZeroedDelegateScopedQueueCoordinator {
 
     @Override
     public void fillBiome(@NonNull BiomeType biomeType) {
-        if (biomeGrid == null) {
-            return;
-        }
-        Biome biome = BukkitAdapter.adapt(biomeType);
         for (int y = getMin().getY(); y <= getMax().getY(); y++) {
             for (int x = 0; x < 16; x++) {
                 for (int z = 0; z < 16; z++) {
-                    this.biomeGrid.setBiome(x, y, z, biome);
+                    FabricUtil.setBiome(world, new CuboidRegion(getMin().getBlockVector3(), getMax().getBlockVector3()), biomeType);
                 }
             }
         }
@@ -142,12 +161,19 @@ public class GenChunk extends ZeroedDelegateScopedQueueCoordinator {
         int maxX = Math.max(pos1.getX(), pos2.getX());
         int maxY = Math.max(pos1.getY(), pos2.getY());
         int maxZ = Math.max(pos1.getZ(), pos2.getZ());
-        chunkData.setRegion(minX, minY, minZ, maxX + 1, maxY + 1, maxZ + 1, BukkitAdapter.adapt(block));
+        for(int i = minX; i <= maxX +1; i++) {
+            for(int j = minZ; j <= maxZ + 1; j++) {
+                for(int k = minY; k <= maxY + 1 ; k++) {
+                    chunkData.setBlockState(new BlockPos(i, k, j), FabricAdapter.adapt(block), true);
+                }
+            }
+        }
     }
 
     @Override
     public boolean setBiome(int x, int z, @NonNull BiomeType biomeType) {
-        return setBiome(x, z, BukkitAdapter.adapt(biomeType));
+        setBiome(x, z, FabricAdapter.adapt(biomeType));
+        return true;
     }
 
     /**
@@ -156,24 +182,15 @@ public class GenChunk extends ZeroedDelegateScopedQueueCoordinator {
      * @param x     Relative x location within the chunk (0 - 15)
      * @param z     Relative z location within the chunk (0 - 15)
      * @param biome Bukkit biome to set
-     * @return if successful
      */
-    public boolean setBiome(int x, int z, @NonNull Biome biome) {
-        if (this.biomeGrid != null) {
+    public void setBiome(int x, int z, @NonNull Biome biome) {
             for (int y = getMin().getY(); y <= getMax().getY(); y++) {
                 this.setBiome(x, y, z, biome);
             }
-            return true;
-        }
-        return false;
     }
 
-    public boolean setBiome(int x, int y, int z, @NonNull Biome biome) {
-        if (this.biomeGrid != null) {
-            this.biomeGrid.setBiome(x, y, z, biome);
-            return true;
-        }
-        return false;
+    public void setBiome(int x, int y, int z, @NonNull Biome biome) {
+       getWorld().setBiome(x,y,z, FabricAdapter.adapt(biome));
     }
 
     @Override
@@ -188,10 +205,10 @@ public class GenChunk extends ZeroedDelegateScopedQueueCoordinator {
     @Override
     public boolean setBlock(int x, int y, int z, @NonNull BlockState id) {
         if (this.result == null) {
-            this.chunkData.setBlock(x, y, z, BukkitAdapter.adapt(id));
+            this.chunkData.setBlockState(new BlockPos(x, y, z), FabricAdapter.adapt(id), true);
             return true;
         }
-        this.chunkData.setBlock(x, y, z, BukkitAdapter.adapt(id));
+        this.chunkData.setBlockState(new BlockPos(x, y, z), FabricAdapter.adapt(id), true);
         this.storeCache(x, y, z, id);
         return true;
     }
@@ -209,10 +226,10 @@ public class GenChunk extends ZeroedDelegateScopedQueueCoordinator {
     @Override
     public boolean setBlock(int x, int y, int z, @NonNull BaseBlock id) {
         if (this.result == null) {
-            this.chunkData.setBlock(x, y, z, BukkitAdapter.adapt(id));
+            this.chunkData.setBlockState(new BlockPos(x, y, z), FabricAdapter.adapt(id.toBlockState()), true);
             return true;
         }
-        this.chunkData.setBlock(x, y, z, BukkitAdapter.adapt(id));
+        this.chunkData.setBlockState(new BlockPos(x, y, z), FabricAdapter.adapt(id.toBlockState()), true);
         this.storeCache(x, y, z, id.toImmutableState());
         return true;
     }
@@ -221,7 +238,7 @@ public class GenChunk extends ZeroedDelegateScopedQueueCoordinator {
     public @Nullable BlockState getBlock(int x, int y, int z) {
         int i = getLayerIndex(y);
         if (result == null) {
-            return BukkitBlockUtil.get(chunkData.getType(x, y, z));
+            return FabricBlockUtil.get(chunkData.getBlockState(new BlockPos(x,y,z)).getBlock());
         }
         BlockState[] array = result[i];
         if (array == null) {
@@ -232,16 +249,17 @@ public class GenChunk extends ZeroedDelegateScopedQueueCoordinator {
     }
 
     public int getX() {
-        return chunk == null ? chunkX : chunk.getX();
+        return chunk == null ? chunkX : chunk.getPos().x;
     }
 
     public int getZ() {
-        return chunk == null ? chunkZ : chunk.getZ();
+        return chunk == null ? chunkZ : chunk.getPos().z;
     }
 
     @Override
     public com.sk89q.worldedit.world.@NonNull World getWorld() {
-        return chunk == null ? BukkitAdapter.adapt(Bukkit.getWorld(world)) : BukkitAdapter.adapt(chunk.getWorld());
+        return chunk == null ? FabricAdapter.adapt(FabricUtil.getWorld(world)) :
+                FabricAdapter.adapt(chunk.getLevel().getServer().getLevel(chunk.getLevel().dimension()));
     }
 
     @Override

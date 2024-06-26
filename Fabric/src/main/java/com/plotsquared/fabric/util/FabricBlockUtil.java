@@ -16,15 +16,17 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-package com.plotsquared.fabric.entity;
+package com.plotsquared.fabric.util;
 
-class EntityBaseStats {
-    EntityWrapper passenger;
-    float fall;
-    short fire;
-    int age;
-    double vZ;
-    double vY;
-    double vX;
+import com.sk89q.worldedit.fabric.FabricAdapter;
+import com.sk89q.worldedit.world.block.BlockState;
+import com.sk89q.worldedit.world.block.BlockType;
+import net.minecraft.world.level.block.Block;
+
+public class FabricBlockUtil {
+
+    public static BlockState get(Block material) {
+        return FabricAdapter.adapt(material).getDefaultState();
+    }
 
 }

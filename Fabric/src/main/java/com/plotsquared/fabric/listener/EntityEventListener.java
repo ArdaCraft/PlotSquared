@@ -19,10 +19,6 @@
 package com.plotsquared.fabric.listener;
 
 import com.google.inject.Inject;
-import com.plotsquared.bukkit.BukkitPlatform;
-import com.plotsquared.bukkit.player.BukkitPlayer;
-import com.plotsquared.bukkit.util.BukkitEntityUtil;
-import com.plotsquared.bukkit.util.BukkitUtil;
 import com.plotsquared.core.PlotSquared;
 import com.plotsquared.core.configuration.Settings;
 import com.plotsquared.core.listener.PlayerBlockEventType;
@@ -40,64 +36,40 @@ import com.plotsquared.core.plot.flag.implementations.ProjectileChangeBlockFlag;
 import com.plotsquared.core.plot.world.PlotAreaManager;
 import com.plotsquared.core.util.EventDispatcher;
 import com.plotsquared.core.util.PlotFlagUtil;
-import com.sk89q.worldedit.bukkit.BukkitAdapter;
+import com.plotsquared.fabric.FabricPlatform;
+import com.plotsquared.fabric.util.FabricEntityUtil;
+import com.plotsquared.fabric.util.FabricUtil;
 import com.sk89q.worldedit.world.block.BlockType;
-import io.papermc.lib.PaperLib;
-import org.bukkit.Material;
-import org.bukkit.Particle;
-import org.bukkit.World;
-import org.bukkit.block.Block;
-import org.bukkit.entity.Ageable;
-import org.bukkit.entity.Boat;
-import org.bukkit.entity.Entity;
-import org.bukkit.entity.EntityType;
-import org.bukkit.entity.FallingBlock;
-import org.bukkit.entity.Player;
-import org.bukkit.entity.Projectile;
-import org.bukkit.entity.TNTPrimed;
-import org.bukkit.entity.Vehicle;
-import org.bukkit.event.Cancellable;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.EventPriority;
-import org.bukkit.event.Listener;
-import org.bukkit.event.entity.CreatureSpawnEvent;
-import org.bukkit.event.entity.EntityChangeBlockEvent;
-import org.bukkit.event.entity.EntityCombustByEntityEvent;
-import org.bukkit.event.entity.EntityDamageByEntityEvent;
-import org.bukkit.event.entity.EntityDamageEvent;
-import org.bukkit.event.entity.EntityExplodeEvent;
-import org.bukkit.event.entity.ExplosionPrimeEvent;
-import org.bukkit.event.vehicle.VehicleCreateEvent;
-import org.bukkit.metadata.FixedMetadataValue;
-import org.bukkit.metadata.MetadataValue;
-import org.bukkit.plugin.Plugin;
-import org.bukkit.projectiles.BlockProjectileSource;
-import org.bukkit.projectiles.ProjectileSource;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
+import net.minecraft.core.GlobalPos;
+import net.minecraft.server.level.ServerEntity;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.entity.Entity;
 import org.checkerframework.checker.nullness.qual.NonNull;
+import xyz.nucleoid.stimuli.event.entity.EntitySpawnEvent;
 
-import java.util.Iterator;
-import java.util.List;
 
 @SuppressWarnings("unused")
-public class EntityEventListener implements Listener {
+public class EntityEventListener {
 
-    private final BukkitPlatform platform;
+    private final FabricPlatform platform;
     private final PlotAreaManager plotAreaManager;
     private final EventDispatcher eventDispatcher;
     private float lastRadius;
 
     @Inject
     public EntityEventListener(
-            final @NonNull BukkitPlatform platform,
+            final @NonNull FabricPlatform platform,
             final @NonNull PlotAreaManager plotAreaManager,
             final @NonNull EventDispatcher eventDispatcher
     ) {
         this.platform = platform;
         this.plotAreaManager = plotAreaManager;
         this.eventDispatcher = eventDispatcher;
+
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST)
     public void onEntityCombustByEntity(EntityCombustByEntityEvent event) {
         onEntityDamageByEntityCommon(event.getCombuster(), event.getEntity(), EntityDamageEvent.DamageCause.FIRE_TICK, event);
     }
@@ -107,17 +79,16 @@ public class EntityEventListener implements Listener {
         onEntityDamageByEntityCommon(event.getDamager(), event.getEntity(), event.getCause(), event);
     }
 
-    private void onEntityDamageByEntityCommon(
+    private InteractionResult onEntityDamageByEntityCommon(
             final Entity damager,
             final Entity victim,
-            final EntityDamageEvent.DamageCause cause,
-            final Cancellable event
+            final DamageSource cause
     ) {
-        Location location = BukkitUtil.adapt(damager.getLocation());
+        Location location = FabricUtil.adapt(GlobalPos.of(damager.level().dimension(), damager.blockPosition()));
         if (!this.plotAreaManager.hasPlotArea(location.getWorldName())) {
             return;
         }
-        if (!BukkitEntityUtil.entityDamage(damager, victim, cause)) {
+        if (!FabricEntityUtil.entityDamage(damager, victim, cause)) {
             if (event.isCancelled()) {
                 if (victim instanceof Ageable ageable) {
                     if (ageable.getAge() == -24000) {

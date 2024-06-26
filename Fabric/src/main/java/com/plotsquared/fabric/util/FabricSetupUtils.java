@@ -1,6 +1,7 @@
 package com.plotsquared.fabric.util;
 
 import com.google.inject.Inject;
+import com.mojang.serialization.JsonOps;
 import com.plotsquared.core.PlotSquared;
 import com.plotsquared.core.configuration.ConfigurationNode;
 import com.plotsquared.core.configuration.ConfigurationSection;
@@ -16,11 +17,22 @@ import com.plotsquared.core.util.SetupUtils;
 import com.plotsquared.core.util.task.TaskManager;
 import com.plotsquared.fabric.FabricPlatform;
 import com.plotsquared.fabric.generator.FabricPlotGenerator;
+import net.fabricmc.fabric.api.datagen.v1.provider.FabricCodecDataProvider;
+import net.fabricmc.fabric.api.event.registry.DynamicRegistries;
+import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
+import net.fabricmc.fabric.mixin.resource.conditions.DataPackContentsMixin;
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Registry;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ChunkHolder;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.packs.PackType;
+import net.minecraft.world.level.DataPackConfig;
 import net.minecraft.world.level.chunk.ChunkGenerator;
 import org.checkerframework.checker.nullness.qual.NonNull;
 
@@ -54,35 +66,35 @@ public class FabricSetupUtils extends SetupUtils {
             return;
         }
         String testWorld = "CheckingPlotSquaredGenerator";
-        for (Plugin plugin : Bukkit.getPluginManager().getPlugins()) {
+        BuiltInRegistries.CHUNK_GENERATOR.keySet().forEach(resourceLocation -> {
             try {
-                if (plugin.isEnabled()) {
-                    ChunkGenerator generator = plugin.getDefaultWorldGenerator(testWorld, "");
-                    if (generator != null) {
-                        PlotSquared.get().removePlotAreas(testWorld);
-                        String name = plugin.getDescription().getName();
-                        GeneratorWrapper<?> wrapped;
-                        if (generator instanceof GeneratorWrapper<?>) {
-                            wrapped = (GeneratorWrapper<?>) generator;
-                        } else {
-                            wrapped = new BukkitPlotGenerator(testWorld, generator, this.plotAreaManager);
-                        }
-                        SetupUtils.generators.put(name, wrapped);
+                ChunkGenerator generator = BuiltInRegistries.CHUNK_GENERATOR.get(resourceLocation).
+                        plugin.getDefaultWorldGenerator(testWorld, "");
+                if (generator != null) {
+                    PlotSquared.get().removePlotAreas(testWorld);
+                    String name = plugin.getDescription().getName();
+                    GeneratorWrapper<?> wrapped;
+                    if (generator instanceof GeneratorWrapper<?>) {
+                        wrapped = (GeneratorWrapper<?>) generator;
+                    } else {
+                        wrapped = new BukkitPlotGenerator(testWorld, generator, this.plotAreaManager);
                     }
+                    SetupUtils.generators.put(name, wrapped);
                 }
             } catch (Throwable e) { // Recover from third party generator error
                 e.printStackTrace();
             }
-        }
-        loaded = true;
+            loaded = true;
+        });
+
     }
 
     @Override
     public void unload(String worldName, boolean save) {
         TaskManager.runTask(() -> {
             ServerLevel world = null;
-            for(ServerLevel level : FabricPlatform.SERVER.getAllLevels()) {
-                if(level.serverLevelData.getLevelName().equalsIgnoreCase(worldName)) {
+            for (ServerLevel level : FabricPlatform.SERVER.getAllLevels()) {
+                if (level.serverLevelData.getLevelName().equalsIgnoreCase(worldName)) {
                     world = level;
                 }
             }
@@ -223,8 +235,8 @@ public class FabricSetupUtils extends SetupUtils {
                 .handleWorldCreation(builder.worldName(), builder.generatorName());
 
         ServerLevel level = null;
-        for(ServerLevel findLevel : FabricPlatform.SERVER.getAllLevels()) {
-            if(findLevel.serverLevelData.getLevelName().equalsIgnoreCase(world)) {
+        for (ServerLevel findLevel : FabricPlatform.SERVER.getAllLevels()) {
+            if (findLevel.serverLevelData.getLevelName().equalsIgnoreCase(world)) {
                 level = findLevel;
             }
         }
@@ -243,8 +255,8 @@ public class FabricSetupUtils extends SetupUtils {
             updateGenerators(false);
         }
         ServerLevel world = null;
-        for(ServerLevel findLevel : FabricPlatform.SERVER.getAllLevels()) {
-            if(findLevel.serverLevelData.getLevelName().equalsIgnoreCase(plotArea.getWorldName())) {
+        for (ServerLevel findLevel : FabricPlatform.SERVER.getAllLevels()) {
+            if (findLevel.serverLevelData.getLevelName().equalsIgnoreCase(plotArea.getWorldName())) {
                 world = findLevel;
             }
         }

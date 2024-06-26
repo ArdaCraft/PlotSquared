@@ -18,7 +18,6 @@
  */
 package com.plotsquared.fabric.generator;
 
-import com.plotsquared.bukkit.util.BukkitUtil;
 import com.plotsquared.core.PlotSquared;
 import com.plotsquared.core.generator.IndependentPlotGenerator;
 import com.plotsquared.core.location.Location;
@@ -27,14 +26,9 @@ import com.plotsquared.core.plot.PlotId;
 import com.plotsquared.core.queue.ZeroedDelegateScopedQueueCoordinator;
 import com.plotsquared.core.util.MathMan;
 import com.plotsquared.fabric.util.FabricUtil;
-import com.sk89q.worldedit.bukkit.BukkitAdapter;
 import com.sk89q.worldedit.world.biome.BiomeType;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.chunk.ChunkGenerator;
-import org.bukkit.World;
-import org.bukkit.block.Biome;
-import org.bukkit.generator.ChunkGenerator;
-import org.checkerframework.checker.nullness.qual.NonNull;
 
 import java.util.Random;
 
@@ -74,36 +68,15 @@ final class DelegatePlotGenerator extends IndependentPlotGenerator {
         int chunkX = min.getX() >> 4;
         int chunkZ = min.getZ() >> 4;
         Random random = new Random(MathMan.pair((short) chunkX, (short) chunkZ));
-        try {
-            ChunkGenerator.BiomeGrid grid = new ChunkGenerator.BiomeGrid() {
-                @Override
-                public void setBiome(int x, int z, @NonNull Biome biome) {
-                    result.setBiome(x, z, BukkitAdapter.adapt(biome));
-                }
-
-                //do not annotate with Override until we discontinue support for 1.4.4 (we no longer support 1.4.4)
-                @Override
-                public void setBiome(int x, int y, int z, @NonNull Biome biome) {
-                    result.setBiome(x, z, BukkitAdapter.adapt(biome));
-
-                }
-
-                @Override
-                public @NonNull Biome getBiome(int x, int z) {
-                    return Biome.FOREST;
-                }
-
-                @Override
-                public @NonNull Biome getBiome(int x, int y, int z) {
-                    return Biome.FOREST;
-                }
-            };
-            chunkGenerator.generateChunkData(world, random, chunkX, chunkZ, grid);
-            return;
-        } catch (Throwable ignored) {
-        }
-        for (BlockPopulator populator : chunkGenerator.getDefaultPopulators(world)) {
-            populator.populate(world, random, world.getChunkAt(chunkX, chunkZ));
+        if (chunkGenerator instanceof FabricPlotGenerator fabricPlotGenerator) {
+            try {
+                fabricPlotGenerator.generateChunkData(world, random, chunkX, chunkZ);
+                return;
+            } catch (Throwable ignored) {
+            }
+            //for (BlockPopulator populator : fabricPlotGenerator.getDefaultPopulators(world)) {
+                new BlockStatePopulator(fabricPlotGenerator.getPlotGenerator()).populate(world, random, world.getChunk(chunkX, chunkZ));
+           // }
         }
     }
 

@@ -32,25 +32,30 @@ import com.plotsquared.core.util.ReflectionUtils.RefMethod;
 import com.plotsquared.core.util.task.PlotSquaredTask;
 import com.plotsquared.core.util.task.TaskManager;
 import com.plotsquared.core.util.task.TaskTime;
-import io.papermc.lib.PaperLib;
-import org.bukkit.Bukkit;
-import org.bukkit.Chunk;
-import org.bukkit.Material;
-import org.bukkit.World;
-import org.bukkit.block.BlockState;
-import org.bukkit.entity.Entity;
-import org.bukkit.entity.Item;
-import org.bukkit.entity.LivingEntity;
-import org.bukkit.entity.Player;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.EventPriority;
-import org.bukkit.event.Listener;
-import org.bukkit.event.block.BlockPhysicsEvent;
-import org.bukkit.event.entity.CreatureSpawnEvent;
-import org.bukkit.event.entity.ItemSpawnEvent;
-import org.bukkit.event.world.ChunkLoadEvent;
-import org.bukkit.event.world.ChunkUnloadEvent;
+import com.plotsquared.fabric.FabricPlatform;
+import com.plotsquared.fabric.util.FabricUtil;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerChunkEvents;
+import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.server.level.ChunkHolder;
+import net.minecraft.server.level.ChunkLevel;
+import net.minecraft.server.level.ServerChunkCache;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.chunk.ChunkAccess;
+import net.minecraft.world.level.chunk.ChunkStatus;
+import net.minecraft.world.level.chunk.LevelChunk;
 import org.checkerframework.checker.nullness.qual.NonNull;
+import xyz.nucleoid.stimuli.Stimuli;
+import xyz.nucleoid.stimuli.event.block.BlockRandomTickEvent;
+import xyz.nucleoid.stimuli.event.entity.EntitySpawnEvent;
 
 import java.lang.reflect.Method;
 import java.util.HashSet;
@@ -59,27 +64,11 @@ import java.util.Objects;
 import static com.plotsquared.core.util.ReflectionUtils.getRefClass;
 
 @SuppressWarnings("unused")
-public class ChunkListener implements Listener {
+public class ChunkListener {
 
     private final PlotAreaManager plotAreaManager;
     private final int version;
-
-    private RefMethod methodSetUnsaved;
-    private RefMethod methodGetHandleChunk;
-    private RefMethod methodGetHandleWorld;
-    private RefField mustNotSave;
-    private Object objChunkStatusFull = null;
-    /*
-    private RefMethod methodGetFullChunk;
-    private RefMethod methodGetBukkitChunk;
-    private RefMethod methodGetChunkProvider;
-    private RefMethod methodGetVisibleMap;
-    private RefField worldServer;
-    private RefField playerChunkMap;
-    private RefField updatingChunks;
-    private RefField visibleChunks;
-    */
-    private Chunk lastChunk;
+    private LevelChunk lastChunk;
     private boolean ignoreUnload = false;
 
     @Inject
@@ -89,47 +78,23 @@ public class ChunkListener implements Listener {
         if (!Settings.Chunk_Processor.AUTO_TRIM) {
             return;
         }
-        try {
-            RefClass classCraftWorld = getRefClass("{cb}.CraftWorld");
-            RefClass classCraftChunk = getRefClass("{cb}.CraftChunk");
-            RefClass classChunkAccess = getRefClass("net.minecraft.world.level.chunk.IChunkAccess");
-            this.methodSetUnsaved = classChunkAccess.getMethod("a", boolean.class);
-            try {
-                this.methodGetHandleChunk = classCraftChunk.getMethod("getHandle");
-            } catch (NoSuchMethodException ignored) {
-                try {
-                    RefClass classChunkStatus = getRefClass("net.minecraft.world.level.chunk.ChunkStatus");
-                    this.objChunkStatusFull = classChunkStatus.getRealClass().getField("n").get(null);
-                    this.methodGetHandleChunk = classCraftChunk.getMethod("getHandle", classChunkStatus.getRealClass());
-                } catch (NoSuchMethodException ex) {
-                    throw new RuntimeException(ex);
-                }
-            }
-            try {
-                if (version < 17) {
-                    RefClass classChunk = getRefClass("{nms}.Chunk");
-                    this.mustNotSave = classChunk.getField("mustNotSave");
-                } else {
-                    RefClass classChunk = getRefClass("net.minecraft.world.level.chunk.Chunk");
-                    this.mustNotSave = classChunk.getField("mustNotSave");
-                }
-            } catch (NoSuchFieldException e) {
-                e.printStackTrace();
-            }
-        } catch (Throwable ignored) {
-            Settings.Chunk_Processor.AUTO_TRIM = false;
+        for (ServerLevel world : FabricPlatform.SERVER.getAllLevels()) {
+            world.noSave = true;
         }
-        for (World world : Bukkit.getWorlds()) {
-            world.setAutoSave(false);
-        }
+
+        ServerChunkEvents.CHUNK_LOAD.register(this::onChunkLoad);
+        ServerChunkEvents.CHUNK_UNLOAD.register(this::onChunkUnload);
+        Stimuli.global().listen(EntitySpawnEvent.EVENT, this::onItemSpawn);
+        Stimuli.global().listen(EntitySpawnEvent.EVENT, this::onEntitySpawn);
+        /*
         if (version > 13) {
             return;
         }
         TaskManager.runTaskRepeat(() -> {
             try {
-                HashSet<Chunk> toUnload = new HashSet<>();
-                for (World world : Bukkit.getWorlds()) {
-                    String worldName = world.getName();
+                HashSet<LevelChunk> toUnload = new HashSet<>();
+                for (ServerLevel world : FabricPlatform.SERVER.getAllLevels()) {
+                    String worldName = world.serverLevelData.getLevelName();
                     if (!this.plotAreaManager.hasPlotArea(worldName)) {
                         continue;
                     }
@@ -166,27 +131,7 @@ public class ChunkListener implements Listener {
             } catch (Throwable e) {
                 e.printStackTrace();
             }
-        }, TaskTime.ticks(1L));
-    }
-
-    public boolean unloadChunk(String world, Chunk chunk, boolean safe) {
-        if (safe && shouldSave(world, chunk.getX(), chunk.getZ())) {
-            return false;
-        }
-        Object c = objChunkStatusFull != null
-                ? this.methodGetHandleChunk.of(chunk).call(objChunkStatusFull)
-                : this.methodGetHandleChunk.of(chunk).call();
-        RefField.RefExecutor field = this.mustNotSave.of(c);
-        methodSetUnsaved.of(c).call(false);
-        if (!((Boolean) field.get())) {
-            field.set(true);
-            if (chunk.isLoaded()) {
-                ignoreUnload = true;
-                chunk.unload(false);
-                ignoreUnload = false;
-            }
-        }
-        return true;
+        }, TaskTime.ticks(1L));*/
     }
 
     public boolean shouldSave(String world, int chunkX, int chunkZ) {
@@ -235,96 +180,95 @@ public class ChunkListener implements Listener {
         return plot != null && plot.hasOwner();
     }
 
-    @EventHandler
-    public void onChunkUnload(ChunkUnloadEvent event) {
+
+    public void onChunkUnload(ServerLevel serverLevel, LevelChunk chunk) {
         if (ignoreUnload) {
             return;
         }
-        Chunk chunk = event.getChunk();
         if (Settings.Chunk_Processor.AUTO_TRIM) {
-            String world = chunk.getWorld().getName();
+            String world = serverLevel.serverLevelData.getLevelName();
             if ((!Settings.Enabled_Components.WORLDS || !SinglePlotArea.isSinglePlotWorld(world)) && this.plotAreaManager.hasPlotArea(
                     world)) {
-                if (unloadChunk(world, chunk, true)) {
+                serverLevel.unload(chunk);
+                /* TODO CHECK ON ! */
+                if (!chunk.loaded) {
                     return;
                 }
             }
         }
-        if (processChunk(event.getChunk(), true)) {
-            chunk.setForceLoaded(true);
+        if (processChunk(serverLevel, chunk, true)) {
+            serverLevel.setChunkForced(chunk.getPos().x, chunk.getPos().z, true);
         }
     }
 
-    @EventHandler
-    public void onChunkLoad(ChunkLoadEvent event) {
-        processChunk(event.getChunk(), false);
+    public void onChunkLoad(ServerLevel serverLevel, LevelChunk chunk) {
+        processChunk(serverLevel, chunk, false);
     }
 
-    @EventHandler(priority = EventPriority.LOWEST)
-    public void onItemSpawn(ItemSpawnEvent event) {
-        Item entity = event.getEntity();
-        PaperLib.getChunkAtAsync(event.getLocation()).thenAccept(chunk -> {
+    public InteractionResult onItemSpawn(Entity entity) {
+        if (entity instanceof ItemEntity itemEntity) {
+            ServerLevel serverLevel = FabricPlatform.SERVER.getLevel(entity.level().dimension());
+            LevelChunk chunk = serverLevel.getChunk(entity.chunkPosition().x, entity.chunkPosition().z);
             if (chunk == this.lastChunk) {
-                event.getEntity().remove();
-                event.setCancelled(true);
-                return;
+                entity.remove(Entity.RemovalReason.DISCARDED);
+                return InteractionResult.FAIL;
             }
-            if (!this.plotAreaManager.hasPlotArea(chunk.getWorld().getName())) {
-                return;
+            if (!this.plotAreaManager.hasPlotArea(serverLevel.serverLevelData.getLevelName())) {
+                return InteractionResult.PASS;
             }
-            Entity[] entities = chunk.getEntities();
+            Entity[] entities = FabricUtil.getEntitiesInChunk(serverLevel, chunk).toArray(new Entity[0]);
             if (entities.length > Settings.Chunk_Processor.MAX_ENTITIES) {
-                event.getEntity().remove();
-                event.setCancelled(true);
+                entity.remove(Entity.RemovalReason.DISCARDED);
                 this.lastChunk = chunk;
+                return InteractionResult.FAIL;
             } else {
                 this.lastChunk = null;
             }
-        });
+        }
+        return InteractionResult.PASS;
     }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onBlockPhysics(BlockPhysicsEvent event) {
+    /* TODO INVESTIGATE PHYSICS DISABLING */
+   /* public void onBlockPhysics(BlockPhysicsEvent event) {
         if (Settings.Chunk_Processor.DISABLE_PHYSICS) {
             event.setCancelled(true);
         }
-    }
+    }*/
 
-    @EventHandler(priority = EventPriority.LOWEST)
-    public void onEntitySpawn(CreatureSpawnEvent event) {
-        LivingEntity entity = event.getEntity();
-        PaperLib.getChunkAtAsync(event.getLocation()).thenAccept(chunk -> {
+    public InteractionResult onEntitySpawn(Entity entity) {
+        if (entity instanceof LivingEntity) {
+            ServerLevel serverLevel = FabricPlatform.SERVER.getLevel(entity.level().dimension());
+            LevelChunk chunk = serverLevel.getChunk(entity.chunkPosition().x, entity.chunkPosition().z);
             if (chunk == this.lastChunk) {
-                event.getEntity().remove();
-                event.setCancelled(true);
-                return;
+               entity.remove(Entity.RemovalReason.DISCARDED);
+                return InteractionResult.FAIL;
             }
-            if (!this.plotAreaManager.hasPlotArea(chunk.getWorld().getName())) {
-                return;
+            if (!this.plotAreaManager.hasPlotArea(serverLevel.serverLevelData.getLevelName())) {
+                return InteractionResult.PASS;
             }
-            Entity[] entities = chunk.getEntities();
+            Entity[] entities = FabricUtil.getEntitiesInChunk(serverLevel, chunk).toArray(new Entity[0]);
             if (entities.length > Settings.Chunk_Processor.MAX_ENTITIES) {
-                event.getEntity().remove();
-                event.setCancelled(true);
+                entity.remove(Entity.RemovalReason.DISCARDED);
                 this.lastChunk = chunk;
+                return InteractionResult.FAIL;
             } else {
                 this.lastChunk = null;
             }
-        });
+        }
+        return InteractionResult.PASS;
     }
 
-    private void cleanChunk(final Chunk chunk) {
+    private void cleanChunk(ServerLevel serverLevel, final LevelChunk chunk) {
         final int currentIndex = TaskManager.index.incrementAndGet();
         PlotSquaredTask task = TaskManager.runTaskRepeat(() -> {
-            if (!chunk.isLoaded()) {
+            if (!chunk.loaded) {
                 Objects.requireNonNull(TaskManager.removeTask(currentIndex)).cancel();
-                chunk.unload(true);
+                serverLevel.unload(chunk);
                 return;
             }
-            BlockState[] tiles = chunk.getTileEntities();
+            BlockEntity[] tiles = chunk.getBlockEntities().values().toArray(new BlockEntity[0]);
             if (tiles.length == 0) {
                 Objects.requireNonNull(TaskManager.removeTask(currentIndex)).cancel();
-                chunk.unload(true);
+                serverLevel.unload(chunk);
                 return;
             }
             long start = System.currentTimeMillis();
@@ -332,41 +276,42 @@ public class ChunkListener implements Listener {
             while (System.currentTimeMillis() - start < 250) {
                 if (i >= tiles.length - Settings.Chunk_Processor.MAX_TILES) {
                     Objects.requireNonNull(TaskManager.removeTask(currentIndex)).cancel();
-                    chunk.unload(true);
+                    serverLevel.unload(chunk);
                     return;
                 }
-                tiles[i].getBlock().setType(Material.AIR, false);
+                chunk.setBlockState(tiles[i].getBlockPos(), Blocks.AIR.defaultBlockState(), false);
+                //tiles[i].getBlockState().getBlock().setType(Material.AIR, false);
                 i++;
             }
         }, TaskTime.ticks(5L));
         TaskManager.addTask(task, currentIndex);
     }
 
-    public boolean processChunk(Chunk chunk, boolean unload) {
-        if (!this.plotAreaManager.hasPlotArea(chunk.getWorld().getName())) {
+    public boolean processChunk(ServerLevel serverLevel, LevelChunk chunk, boolean unload) {
+        if (!this.plotAreaManager.hasPlotArea(serverLevel.serverLevelData.getLevelName())) {
             return false;
         }
-        Entity[] entities = chunk.getEntities();
-        BlockState[] tiles = chunk.getTileEntities();
+        Entity[] entities = FabricUtil.getEntitiesInChunk(serverLevel, chunk).toArray(new Entity[0]);
+        BlockEntity[] tiles = chunk.getBlockEntities().values().toArray(new BlockEntity[0]);
         if (entities.length > Settings.Chunk_Processor.MAX_ENTITIES) {
             int toRemove = entities.length - Settings.Chunk_Processor.MAX_ENTITIES;
             int index = 0;
             while (toRemove > 0 && index < entities.length) {
                 final Entity entity = entities[index++];
-                if (!(entity instanceof Player)) {
-                    entity.remove();
+                if (!(entity instanceof ServerPlayer)) {
+                    entity.remove(Entity.RemovalReason.DISCARDED);
                     toRemove--;
                 }
             }
         }
         if (tiles.length > Settings.Chunk_Processor.MAX_TILES) {
             if (unload) {
-                cleanChunk(chunk);
+                cleanChunk(serverLevel, chunk);
                 return true;
             }
 
             for (int i = 0; i < (tiles.length - Settings.Chunk_Processor.MAX_TILES); i++) {
-                tiles[i].getBlock().setType(Material.AIR, false);
+                chunk.setBlockState(tiles[i].getBlockPos(), Blocks.AIR.defaultBlockState(), false);
             }
         }
         return false;

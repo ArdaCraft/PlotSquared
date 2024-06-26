@@ -66,11 +66,13 @@ dependencies {
     modImplementation include("net.kyori:adventure-text-serializer-legacy:4.17.0")
     modImplementation include("dev.notmyfault.serverlib:ServerLib:2.3.6")
     modImplementation("curse.maven:worldedit-225608:4586218")
+    //modImplementation("name:FastAsyncWorldEdit-Fabric-2.6.0-SNAPSHOT")
     modImplementation("xyz.nucleoid:stimuli:0.4.8+1.20.1")
     modImplementation "curse.maven:tslateffectslib-700382:5271397"
     modCompileOnlyApi("net.luckperms:api:5.4")
     modCompileOnlyApi("io.github.miniplaceholders:miniplaceholders-api:2.2.3")
     modCompileOnlyApi("name:Multiworld-Fabric-1.20.1")
+    modCompileOnlyApi("xyz.nucleoid:fantasy:0.4.11+1.20-rc1")
     // Fabric API. This is technically optional, but you probably want it anyway.
     modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 }

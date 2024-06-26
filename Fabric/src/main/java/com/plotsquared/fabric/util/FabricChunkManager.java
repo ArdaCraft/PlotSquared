@@ -3,8 +3,10 @@ package com.plotsquared.fabric.util;
 import com.plotsquared.core.util.ChunkManager;
 import com.sk89q.worldedit.math.BlockVector2;
 import com.sk89q.worldedit.regions.CuboidRegion;
+import net.minecraft.world.level.chunk.ChunkStatus;
 
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 
 public class FabricChunkManager extends ChunkManager {
 
@@ -17,7 +19,12 @@ public class FabricChunkManager extends ChunkManager {
 
     @Override
     public CompletableFuture<?> loadChunk(String world, BlockVector2 chunkLoc, boolean force) {
-        return PaperLib.getChunkAtAsync(BukkitUtil.getWorld(world), chunkLoc.getX(), chunkLoc.getZ(), force);
+        return FabricUtil.getWorld(world).getChunkSource().getChunkFuture(
+                chunkLoc.getX(),
+                chunkLoc.getZ(),
+                ChunkStatus.FULL,
+                force
+        );
     }
 
 }

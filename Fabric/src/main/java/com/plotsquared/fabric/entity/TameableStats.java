@@ -18,11 +18,12 @@
  */
 package com.plotsquared.fabric.entity;
 
-import org.bukkit.entity.AnimalTamer;
+
+import net.minecraft.world.entity.LivingEntity;
 
 class TameableStats {
 
-    AnimalTamer owner;
+    LivingEntity owner;
     boolean tamed;
 
 }

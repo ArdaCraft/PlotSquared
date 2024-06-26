@@ -24,6 +24,9 @@ import com.google.inject.Injector;
 import com.google.inject.Key;
 import com.google.inject.Stage;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.Decoder;
+import com.mojang.serialization.JsonOps;
 import com.plotsquared.core.PlotPlatform;
 import com.plotsquared.core.PlotSquared;
 import com.plotsquared.core.backup.BackupManager;
@@ -69,7 +72,6 @@ import com.plotsquared.core.util.FileUtils;
 import com.plotsquared.core.util.PlatformWorldManager;
 import com.plotsquared.core.util.PlayerManager;
 import com.plotsquared.core.util.PremiumVerification;
-import com.plotsquared.core.util.ReflectionUtils;
 import com.plotsquared.core.util.SetupUtils;
 import com.plotsquared.core.util.WorldUtil;
 import com.plotsquared.core.util.task.TaskManager;
@@ -77,6 +79,7 @@ import com.plotsquared.core.util.task.TaskTime;
 import com.plotsquared.core.uuid.CacheUUIDService;
 import com.plotsquared.core.uuid.UUIDPipeline;
 import com.plotsquared.core.uuid.offline.OfflineModeUUIDService;
+import com.plotsquared.fabric.data.PlotSquaredDataAttachments;
 import com.plotsquared.fabric.generator.FabricPlotGenerator;
 import com.plotsquared.fabric.inject.BackupModule;
 import com.plotsquared.fabric.inject.FabricModule;
@@ -94,8 +97,11 @@ import com.plotsquared.fabric.listener.ProjectileEventListener;
 import com.plotsquared.fabric.listener.SingleWorldListener;
 import com.plotsquared.fabric.listener.WorldEvents;
 import com.plotsquared.fabric.placeholder.MiniPlaceholders;
+import com.plotsquared.fabric.player.FabricPlayerManager;
 import com.plotsquared.fabric.util.FabricTimeConverter;
 import com.plotsquared.fabric.util.FabricUtil;
+import com.plotsquared.fabric.util.FabricWorld;
+import com.plotsquared.fabric.util.SetGenFabric;
 import com.plotsquared.fabric.util.TranslationUpdateManager;
 import com.plotsquared.fabric.util.task.FabricTaskManager;
 import com.plotsquared.fabric.uuid.LuckPermsUUIDService;
@@ -104,18 +110,44 @@ import com.plotsquared.fabric.uuid.SQLiteUUIDService;
 import com.plotsquared.fabric.uuid.SquirrelIdUUIDService;
 import com.sk89q.worldedit.WorldEdit;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.biome.v1.BiomeSelectionContext;
+import net.fabricmc.fabric.api.biome.v1.BiomeSelectors;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.impl.biome.modification.BiomeSelectionContextImpl;
 import net.fabricmc.loader.api.FabricLoader;
 import net.kyori.adventure.audience.Audience;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import net.minecraft.commands.Commands;
+import net.minecraft.core.GlobalPos;
+import net.minecraft.core.Holder;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.RegistryOps;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.biome.BiomeGenerationSettings;
+import net.minecraft.world.level.biome.BiomeManager;
+import net.minecraft.world.level.biome.BiomeSources;
+import net.minecraft.world.level.biome.Biomes;
+import net.minecraft.world.level.biome.Climate;
+import net.minecraft.world.level.biome.FixedBiomeSource;
+import net.minecraft.world.level.biome.MultiNoiseBiomeSource;
 import net.minecraft.world.level.chunk.ChunkGenerator;
+import net.minecraft.world.level.chunk.ChunkGenerators;
+import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.levelgen.FlatLevelSource;
+import net.minecraft.world.level.storage.LevelResource;
+import org.apache.commons.compress.utils.Lists;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.checkerframework.checker.nullness.qual.NonNull;
@@ -141,8 +173,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-
-import static com.plotsquared.core.util.ReflectionUtils.getRefClass;
+import java.util.stream.Collectors;
 
 public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer> {
 
@@ -178,7 +209,7 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
     @WorldFile
     private File worldfile;
     @Inject
-    private BukkitPlayerManager playerManager;
+    private FabricPlayerManager playerManager;
     @Inject
     private BackupManager backupManager;
     @Inject
@@ -252,7 +283,7 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
 
         // FastAsyncWorldEdit
         if (Settings.FAWE_Components.FAWE_HOOK) {
-            faweHook = false;
+            faweHook = true;
             /*
             if(FabricLoader.getInstance().isModLoaded("worldedit")) {
                 faweHook = true;
@@ -367,11 +398,13 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
 
             EntitySpawnListener entitySpawnListener = injector.getInstance(EntitySpawnListener.class);
 
+
+            /*
             if (PaperLib.isPaper() && Settings.Paper_Components.PAPER_LISTENERS) {
                 getServer().getPluginManager().registerEvents(injector().getInstance(PaperListener.class), this);
             } else {
                 getServer().getPluginManager().registerEvents(injector().getInstance(SpigotListener.class), this);
-            }
+            }*/
             this.plotListener.startRunnable();
         }
 
@@ -552,35 +585,19 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
     }
 
     private void unload() {
-        if (!this.methodUnloadSetup) {
-            this.methodUnloadSetup = true;
-            try {
-                ReflectionUtils.RefClass classCraftWorld = getRefClass("{cb}.CraftWorld");
-                this.methodUnloadChunk0 = classCraftWorld.getRealClass().getDeclaredMethod(
-                        "unloadChunk0",
-                        int.class,
-                        int.class,
-                        boolean.class
-                );
-                this.methodUnloadChunk0.setAccessible(true);
-            } catch (Throwable event) {
-                event.printStackTrace();
-            }
-        }
-
         if (this.plotAreaManager instanceof SinglePlotAreaManager) {
             long start = System.currentTimeMillis();
             final SinglePlotArea area = ((SinglePlotAreaManager) this.plotAreaManager).getArea();
 
             outer:
-            for (final World world : Bukkit.getWorlds()) {
-                final String name = world.getName();
+            for (final ServerLevel world : SERVER.getAllLevels()) {
+                final String name = world.serverLevelData.getLevelName();
                 final char char0 = name.charAt(0);
                 if (!Character.isDigit(char0) && char0 != '-') {
                     continue;
                 }
 
-                if (!world.getPlayers().isEmpty()) {
+                if (!world.players().isEmpty()) {
                     continue;
                 }
 
@@ -596,39 +613,28 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
                             .platform()
                             .playerManager()
                             .getPlayerIfExists(plot.getOwner()) == null) {
+                        /*
                         if (world.getKeepSpawnInMemory()) {
                             world.setKeepSpawnInMemory(false);
                             return;
-                        }
-                        final Chunk[] chunks = world.getLoadedChunks();
-                        if (chunks.length == 0) {
-                            if (!Bukkit.unloadWorld(world, true)) {
-                                LOGGER.warn("Failed to unload {}", world.getName());
+                        }*/
+                        if (world.getChunkSource().getLoadedChunksCount() < 1) {
+                            try {
+                                world.close();
+                            } catch (IOException e) {
+                                LOGGER.warn("Failed to unload {}", world.serverLevelData.getLevelName());
                             }
                             return;
                         } else {
                             int index = 0;
                             do {
-                                final Chunk chunkI = chunks[index++];
-                                boolean result;
-                                if (methodUnloadChunk0 != null) {
-                                    try {
-                                        result = (boolean) methodUnloadChunk0.invoke(world, chunkI.getX(), chunkI.getZ(), true);
-                                    } catch (Throwable e) {
-                                        methodUnloadChunk0 = null;
-                                        e.printStackTrace();
-                                        continue outer;
-                                    }
-                                } else {
-                                    result = world.unloadChunk(chunkI.getX(), chunkI.getZ(), true);
-                                }
-                                if (!result) {
-                                    continue outer;
-                                }
+                                final LevelChunk chunkI = world.getChunkSource().chunkMap.visibleChunkMap.removeFirst()
+                                        .getFullChunk();
+                                world.unload(chunkI);
                                 if (System.currentTimeMillis() - start > 5) {
                                     return;
                                 }
-                            } while (index < chunks.length);
+                            } while (index < world.getChunkSource().getLoadedChunksCount());
                         }
                     }
                 }
@@ -737,34 +743,35 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
 
     @Override
     public @NonNull File getDirectory() {
-        return getDataFolder();
+        return SERVER.getServerDirectory();
     }
 
     @Override
     public @NonNull File worldContainer() {
-        return Bukkit.getWorldContainer();
+        return SERVER.getWorldPath(LevelResource.ROOT).toFile();
     }
 
     @SuppressWarnings("deprecation")
     private void runEntityTask() {
         TaskManager.runTaskRepeat(() -> this.plotAreaManager.forEachPlotArea(plotArea -> {
-            final World world = Bukkit.getWorld(plotArea.getWorldName());
+            final ServerLevel world = FabricUtil.getWorld(plotArea.getWorldName());
             try {
                 if (world == null) {
                     return;
                 }
-                List<Entity> entities = world.getEntities();
+                List<Entity> entities = Lists.newArrayList(world.getAllEntities().iterator());
                 Iterator<Entity> iterator = entities.iterator();
                 while (iterator.hasNext()) {
                     Entity entity = iterator.next();
+                    /*
                     //noinspection ConstantValue - getEntitySpawnReason annotated as NotNull, but is not NotNull. lol.
                     if (PaperLib.isPaper() && entity.getEntitySpawnReason() != null && "CUSTOM".equals(entity
                             .getEntitySpawnReason()
                             .name())) {
                         continue;
-                    }
+                    }*/
                     // Fallback for Spigot not having Entity#getEntitySpawnReason
-                    if (entity.getMetadata("ps_custom_spawned").stream().anyMatch(MetadataValue::asBoolean)) {
+                    if (entity.getAttached(PlotSquaredDataAttachments.PS_CUSTOM_SPAWNED).booleanValue()) {
                         continue;
                     }
                     switch (entity.getType().toString()) {
@@ -809,24 +816,25 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
                         case "CHEST_BOAT":
                         case "BOAT":
                             if (Settings.Enabled_Components.KILL_ROAD_VEHICLES) {
-                                com.plotsquared.core.location.Location location = BukkitUtil.adapt(entity.getLocation());
+                                com.plotsquared.core.location.Location location =
+                                        FabricUtil.adapt(GlobalPos.of(entity.level().dimension(), entity.blockPosition()));
                                 Plot plot = location.getPlot();
                                 if (plot == null) {
                                     if (location.isPlotArea()) {
-                                        if (entity.hasMetadata("ps-tmp-teleport")) {
+                                        if (entity.hasAttached(PlotSquaredDataAttachments.PS_TMP_TELEPORT)) {
                                             continue;
                                         }
                                         this.removeRoadEntity(entity, iterator);
                                     }
                                     continue;
                                 }
-                                List<MetadataValue> meta = entity.getMetadata("plot");
+                                List<Plot> meta = entity.getAttached(PlotSquaredDataAttachments.PLOT);
                                 if (meta.isEmpty()) {
                                     continue;
                                 }
-                                Plot origin = (Plot) meta.get(0).value();
+                                Plot origin = meta.get(0);
                                 if (!plot.equals(origin.getBasePlot(false))) {
-                                    if (entity.hasMetadata("ps-tmp-teleport")) {
+                                    if (entity.hasAttached(PlotSquaredDataAttachments.PS_TMP_TELEPORT)) {
                                         continue;
                                     }
                                     this.removeRoadEntity(entity, iterator);
@@ -838,7 +846,8 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
                         case "DRAGON_FIREBALL":
                         case "DROPPED_ITEM":
                             if (Settings.Enabled_Components.KILL_ROAD_ITEMS
-                                    && plotArea.getOwnedPlotAbs(BukkitUtil.adapt(entity.getLocation())) == null) {
+                                    && plotArea.getOwnedPlotAbs(FabricUtil.adapt(GlobalPos.of(entity.level().dimension(),
+                                    entity.blockPosition()))) == null) {
                                 this.removeRoadEntity(entity, iterator);
                             }
                             // dropped item
@@ -849,24 +858,24 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
                             continue;
                         case "SHULKER":
                             if (Settings.Enabled_Components.KILL_ROAD_MOBS && (Settings.Enabled_Components.KILL_NAMED_ROAD_MOBS || entity.getCustomName() == null)) {
-                                LivingEntity livingEntity = (LivingEntity) entity;
-                                List<MetadataValue> meta = entity.getMetadata("shulkerPlot");
-                                if (!meta.isEmpty()) {
+                                Mob livingEntity = (Mob) entity;
+                                if (entity.hasAttached(PlotSquaredDataAttachments.SHULKER_PLOT)) {
                                     if (livingEntity.isLeashed() && !Settings.Enabled_Components.KILL_OWNED_ROAD_MOBS) {
                                         continue;
                                     }
-                                    if (entity.hasMetadata("keep")) {
+                                    if (entity.hasAttached(PlotSquaredDataAttachments.KEEP)) {
                                         continue;
                                     }
 
-                                    PlotId originalPlotId = (PlotId) meta.get(0).value();
+                                    PlotId originalPlotId = entity.getAttached(PlotSquaredDataAttachments.SHULKER_PLOT);
                                     if (originalPlotId != null) {
-                                        com.plotsquared.core.location.Location pLoc = BukkitUtil.adapt(entity.getLocation());
+                                        com.plotsquared.core.location.Location pLoc =
+                                                FabricUtil.adapt(GlobalPos.of(entity.level().dimension(), entity.blockPosition()));
                                         PlotArea area = pLoc.getPlotArea();
                                         if (area != null) {
                                             Plot currentPlot = area.getPlotAbs(pLoc);
                                             if (currentPlot == null || !originalPlotId.equals(currentPlot.getId())) {
-                                                if (entity.hasMetadata("ps-tmp-teleport")) {
+                                                if (entity.hasAttached(PlotSquaredDataAttachments.PS_TMP_TELEPORT)) {
                                                     continue;
                                                 }
                                                 this.removeRoadEntity(entity, iterator);
@@ -875,15 +884,13 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
                                     }
                                 } else {
                                     //This is to apply the metadata to already spawned shulkers (see EntitySpawnListener.java)
-                                    com.plotsquared.core.location.Location pLoc = BukkitUtil.adapt(entity.getLocation());
+                                    com.plotsquared.core.location.Location pLoc =
+                                            FabricUtil.adapt(GlobalPos.of(entity.level().dimension(), entity.blockPosition()));
                                     PlotArea area = pLoc.getPlotArea();
                                     if (area != null) {
                                         Plot currentPlot = area.getPlotAbs(pLoc);
                                         if (currentPlot != null) {
-                                            entity.setMetadata(
-                                                    "shulkerPlot",
-                                                    new FixedMetadataValue((Plugin) PlotSquared.platform(), currentPlot.getId())
-                                            );
+                                            entity.setAttached(PlotSquaredDataAttachments.SHULKER_PLOT, currentPlot.getId());
                                         }
                                     }
                                 }
@@ -961,28 +968,28 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
                         case "ZOGLIN":
                         default: {
                             if (Settings.Enabled_Components.KILL_ROAD_MOBS) {
-                                Location location = entity.getLocation();
-                                if (BukkitUtil.adapt(location).isPlotRoad()) {
-                                    if (entity instanceof LivingEntity livingEntity) {
+                                GlobalPos location = GlobalPos.of(entity.level().dimension(), entity.blockPosition());
+                                if (FabricUtil.adapt(location).isPlotRoad()) {
+                                    if (entity instanceof Mob livingEntity) {
                                         if ((Settings.Enabled_Components.KILL_OWNED_ROAD_MOBS || !livingEntity.isLeashed())
-                                                || !entity.hasMetadata("keep")) {
-                                            Entity passenger = entity.getPassenger();
+                                                || !entity.hasAttached(PlotSquaredDataAttachments.KEEP)) {
+                                            Entity passenger = entity.getControllingPassenger();
                                             if ((Settings.Enabled_Components.KILL_OWNED_ROAD_MOBS
                                                     || !((passenger instanceof Player) || livingEntity.isLeashed()))
                                                     && (Settings.Enabled_Components.KILL_NAMED_ROAD_MOBS || entity.getCustomName() == null)
-                                                    && entity.getMetadata("keep").isEmpty()) {
-                                                if (entity.hasMetadata("ps-tmp-teleport")) {
+                                                    && !entity.hasAttached(PlotSquaredDataAttachments.KEEP)) {
+                                                if (entity.hasAttached(PlotSquaredDataAttachments.PS_TMP_TELEPORT)) {
                                                     continue;
                                                 }
                                                 this.removeRoadEntity(entity, iterator);
                                             }
                                         }
                                     } else {
-                                        Entity passenger = entity.getPassenger();
+                                        Entity passenger = entity.getControllingPassenger();
                                         if ((Settings.Enabled_Components.KILL_OWNED_ROAD_MOBS || !(passenger instanceof Player))
                                                 && (Settings.Enabled_Components.KILL_NAMED_ROAD_MOBS && entity.getCustomName() != null)
-                                                && entity.getMetadata("keep").isEmpty()) {
-                                            if (entity.hasMetadata("ps-tmp-teleport")) {
+                                                && entity.hasAttached(PlotSquaredDataAttachments.KEEP)) {
+                                            if (entity.hasAttached(PlotSquaredDataAttachments.PS_TMP_TELEPORT)) {
                                                 continue;
                                             }
                                             this.removeRoadEntity(entity, iterator);
@@ -1000,16 +1007,16 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
     }
 
     private void removeRoadEntity(Entity entity, Iterator<Entity> entityIterator) {
-        RemoveRoadEntityEvent event = eventDispatcher.callRemoveRoadEntity(BukkitAdapter.adapt(entity));
+        RemoveRoadEntityEvent event = eventDispatcher.callRemoveRoadEntity(new FabricEntity(entity));
 
         if (event.getEventResult() == Result.DENY) {
             return;
         }
 
         entityIterator.remove();
-        entity.remove();
+        entity.remove(Entity.RemovalReason.DISCARDED);
     }
-
+/*
     @Override
     public @Nullable
     final ChunkGenerator getDefaultWorldGenerator(
@@ -1027,7 +1034,7 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
         }
         return (ChunkGenerator) result.specify(worldName);
     }
-
+*/
     @Override
     public @Nullable GeneratorWrapper<?> getGenerator(
             final @NonNull String world,
@@ -1037,24 +1044,30 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
             return null;
         }
 
-        final Plugin genPlugin = Bukkit.getPluginManager().getPlugin(name);
-        if (genPlugin != null && genPlugin.isEnabled()) {
-            ChunkGenerator gen = genPlugin.getDefaultWorldGenerator(world, "");
+       // List<Codec<? extends ChunkGenerator>> chunkGeneratorCodecs =
+              //  SERVER.registryAccess().registry(Registries.CHUNK_GENERATOR).get().stream().toList();
+
+        /*if () {
+            ChunkGenerator gen =
+                    SERVER.registryAccess().registry(Registries.CHUNK_GENERATOR).get().get(BuiltInRegistries.CHUNK_GENERATOR).decode()
+                    BuiltInRegistries.CHUNK_GENERATOR //registry
+                    Registries.CHUNK_GENERATOR //resourceKey
             if (gen instanceof GeneratorWrapper<?>) {
                 return (GeneratorWrapper<?>) gen;
             }
-            return new FabricPlotGenerator(world, gen, this.plotAreaManager, gen.getBiomeSource());
-        } else {
+            return new BukkitPlotGenerator(world, gen, this.plotAreaManager);
+        } else {*/
             return new FabricPlotGenerator(
                     world,
                     injector().getInstance(Key.get(IndependentPlotGenerator.class, DefaultGenerator.class)),
                     this.plotAreaManager
             );
-        }
+      //  }
     }
 
     @Override
     public void startMetrics() {
+        /*
         if (this.metricsStarted) {
             return;
         }
@@ -1094,7 +1107,7 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
                 () -> Bukkit.getPluginManager().getPlugin("FastAsyncWorldEdit") != null ? "FastAsyncWorldEdit" : "WorldEdit"
         ));
         metrics.addCustomChart(new SimplePie("offline_mode", () -> Settings.UUID.OFFLINE ? "true" : "false"));
-        metrics.addCustomChart(new SimplePie("offline_mode_force", () -> Settings.UUID.FORCE_LOWERCASE ? "true" : "false"));
+        metrics.addCustomChart(new SimplePie("offline_mode_force", () -> Settings.UUID.FORCE_LOWERCASE ? "true" : "false"));*/
     }
 
     @Override
@@ -1104,7 +1117,7 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
 
     @Override
     public void setGenerator(final @NonNull String worldName) {
-        World world = BukkitUtil.getWorld(worldName);
+        ServerLevel world = FabricUtil.getWorld(worldName);
         if (world == null) {
             // create world
             ConfigurationSection worldConfig = this.worldConfiguration.getConfigurationSection("worlds." + worldName);
@@ -1118,24 +1131,28 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
                                     worldConfig))
                             .settingsNodesWrapper(new SettingsNodesWrapper(new ConfigurationNode[0], null)).worldName(worldName);
             injector().getInstance(SetupUtils.class).setupWorld(builder);
-            world = Bukkit.getWorld(worldName);
+            world = FabricUtil.getWorld(worldName);
         } else {
             try {
                 if (!this.plotAreaManager.hasPlotArea(worldName)) {
-                    SetGenCB.setGenerator(BukkitUtil.getWorld(worldName));
+                    SetGenFabric.setGenerator(FabricUtil.getWorld(worldName));
                 }
             } catch (final Exception e) {
                 LOGGER.error("Failed to reload world: {} | {}", world, e.getMessage());
-                Bukkit.getServer().unloadWorld(world, false);
+                try {
+                    world.close();
+                } catch (IOException ex) {
+                    throw new RuntimeException(ex);
+                }
                 return;
             }
         }
         assert world != null;
-        ChunkGenerator gen = world.getGenerator();
-        if (gen instanceof BukkitPlotGenerator) {
-            PlotSquared.get().loadWorld(worldName, (BukkitPlotGenerator) gen);
+        ChunkGenerator gen = world.getChunkSource().getGenerator();
+        if (gen instanceof FabricPlotGenerator) {
+            PlotSquared.get().loadWorld(worldName, (FabricPlotGenerator) gen);
         } else if (gen != null) {
-            PlotSquared.get().loadWorld(worldName, new BukkitPlotGenerator(worldName, gen, this.plotAreaManager));
+            PlotSquared.get().loadWorld(worldName, new FabricPlotGenerator(worldName, gen, this.plotAreaManager));
         } else if (this.worldConfiguration.contains("worlds." + worldName)) {
             PlotSquared.get().loadWorld(worldName, null);
         }
@@ -1143,7 +1160,7 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
 
     @Override
     public @NonNull String serverNativePackage() {
-        final String name = Bukkit.getServer().getClass().getPackage().getName();
+        final String name = SERVER.name();
         return name.substring(name.lastIndexOf('.') + 1);
     }
 
@@ -1152,12 +1169,13 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
             final @NonNull String world,
             final @NonNull IndependentPlotGenerator generator
     ) {
-        return new BukkitPlotGenerator(world, generator, this.plotAreaManager);
+        return new FabricPlotGenerator(world, generator, this.plotAreaManager);
     }
 
     @SuppressWarnings("deprecation") // Paper deprecation
     @Override
     public @NonNull String pluginsFormatted() {
+        /*
         StringBuilder msg = new StringBuilder();
         List<Plugin> plugins = new ArrayList<>();
         Collections.addAll(plugins, Bukkit.getServer().getPluginManager().getPlugins());
@@ -1184,12 +1202,14 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
                 }
             }
         }
-        return msg.toString();
+        return msg.toString();*/
+        return "";
     }
 
     @Override
     @SuppressWarnings({"ConstantConditions", "deprecation"}) // Paper deprecation
     public @NonNull String worldEditImplementations() {
+        /*
         StringBuilder msg = new StringBuilder();
         if (Bukkit.getPluginManager().getPlugin("FastAsyncWorldEdit") != null) {
             msg.append("FastAsyncWorldEdit: ").append(Bukkit
@@ -1207,17 +1227,18 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
         } else {
             msg.append("WorldEdit: ").append(Bukkit.getPluginManager().getPlugin("WorldEdit").getDescription().getVersion());
         }
-        return msg.toString();
+        return msg.toString();*/
+        return "";
     }
 
     @Override
     public com.plotsquared.core.location.@NonNull World<?> getPlatformWorld(final @NonNull String worldName) {
-        return BukkitWorld.of(worldName);
+        return FabricWorld.of(FabricUtil.getWorld(worldName));
     }
 
     @Override
     public @NonNull Audience consoleAudience() {
-        return BukkitUtil.BUKKIT_AUDIENCES.console();
+        return FabricUtil.FABRIC_AUDIENCES.console();
     }
 
     @Override
@@ -1257,7 +1278,7 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
 
     @Override
     @NonNull
-    public PlayerManager<? extends PlotPlayer<Player>, ? extends Player> playerManager() {
+    public PlayerManager<? extends PlotPlayer<ServerPlayer>, ? extends ServerPlayer> playerManager() {
         return this.playerManager;
     }
 
@@ -1266,7 +1287,8 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
         /* Make this prettier at some point */
         final String[] languages = new String[]{"en"};
         for (final String language : languages) {
-            if (!new File(new File(this.getDataFolder(), "lang"), String.format("messages_%s.json", language)).exists()) {
+            if (!new File(new File(FabricLoader.getInstance().getConfigDirectory(), "lang"), String.format("messages_%s.json",
+                    language)).exists()) {
                 this.saveResource(String.format("lang/messages_%s.json", language), false);
                 LOGGER.info("Copied language file 'messages_{}.json'", language);
             }

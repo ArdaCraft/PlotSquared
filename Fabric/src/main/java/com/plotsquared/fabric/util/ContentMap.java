@@ -72,8 +72,8 @@ public class ContentMap {
         }
     }
 
-    void saveEntitiesOut(LevelChunk chunk, CuboidRegion region) {
-        for (Entity entity : chunk.getEntities()) {
+    void saveEntitiesOut(ServerLevel serverLevel, LevelChunk chunk, CuboidRegion region) {
+        for (Entity entity : FabricUtil.getEntitiesInChunk(serverLevel, chunk)) {
             Location location = FabricUtil.adapt(GlobalPos.of(entity.level().dimension(), entity.blockPosition()));
             int x = location.getX();
             int z = location.getZ();
@@ -83,14 +83,16 @@ public class ContentMap {
             if (entity.getVehicle() != null) {
                 continue;
             }
+            /*
             EntityWrapper wrap = new ReplicatingEntityWrapper(entity, (short) 2);
-            wrap.saveEntity();
+            wrap.saveEntity();*/
             this.entities.add(entity);
         }
     }
 
-    void saveEntitiesIn(LevelChunk chunk, CuboidRegion region, boolean delete) {
-        for (Entity entity : chunk.getEntities()) {
+    void saveEntitiesIn(ServerLevel serverLevel, LevelChunk chunk, CuboidRegion region, boolean delete) {
+        /*
+        for (Entity entity : FabricRegionManager.getEntitiesInChunk(serverLevel, chunk)) {
             Location location = FabricUtil.adapt(GlobalPos.of(entity.level().dimension(), entity.blockPosition()));
             int x = location.getX();
             int z = location.getZ();
@@ -108,11 +110,11 @@ public class ContentMap {
                     entity.remove(Entity.RemovalReason.DISCARDED);
                 }
             }
-        }
+        }*/
     }
 
     void restoreEntities(ServerLevel world) {
-        for (EntityWrapper entity : this.entities) {
+        for (Entity entity : this.entities) {
             try {
                 entity.spawn(world, 0, 0);
             } catch (Exception e) {

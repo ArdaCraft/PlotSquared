@@ -19,14 +19,12 @@
 package com.plotsquared.fabric.entity;
 
 
-import net.minecraft.world.entity.animal.horse.Horse;
+import net.minecraft.network.syncher.EntityDataAccessor;
 
 class HorseStats {
 
     double jump;
     boolean chest;
-    Horse.HorseGroupData.variant variant;
-    Horse.Color color;
-    Horse.Style style;
+    EntityDataAccessor<Integer> variant;
 
 }

@@ -17,7 +17,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package com.plotsquared.fabric.entity;
-
+/*
 import com.plotsquared.bukkit.BukkitPlatform;
 import org.bukkit.Chunk;
 import org.bukkit.Location;
@@ -113,4 +113,4 @@ public class TeleportEntityWrapper extends EntityWrapper {
         return chunk.getWorld().getChunkAt(chunk.getX() + dx, chunk.getZ() + dz);
     }
 
-}
+}*/

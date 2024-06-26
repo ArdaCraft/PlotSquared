@@ -56,6 +56,7 @@ import com.plotsquared.core.util.PlotFlagUtil;
 import com.plotsquared.core.util.task.TaskManager;
 import com.plotsquared.core.util.task.TaskTime;
 import com.plotsquared.fabric.FabricPlatform;
+import com.plotsquared.fabric.listener.event.UseCauldronCallback;
 import com.plotsquared.fabric.player.FabricPlayer;
 import com.plotsquared.fabric.util.FabricUtil;
 import com.plotsquared.fabric.util.FabricWorld;
@@ -70,26 +71,42 @@ import net.kyori.adventure.text.minimessage.tag.Tag;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.GlobalPos;
+import net.minecraft.core.cauldron.CauldronInteraction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.network.ServerGamePacketListenerImpl;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.tags.ItemTags;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.animal.SnowGolem;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.enchantment.FrostWalkerEnchantment;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.NaturalSpawner;
+import net.minecraft.world.level.block.AbstractCauldronBlock;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.CauldronBlock;
 import net.minecraft.world.level.block.FallingBlock;
 import net.minecraft.world.level.block.GrassBlock;
+import net.minecraft.world.level.block.IceBlock;
 import net.minecraft.world.level.block.SculkSpreader;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.BlockHitResult;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import xyz.nucleoid.stimuli.Stimuli;
 import xyz.nucleoid.stimuli.event.block.BlockBreakEvent;
 import xyz.nucleoid.stimuli.event.block.BlockPlaceEvent;
 import xyz.nucleoid.stimuli.event.block.BlockRandomTickEvent;
+import xyz.nucleoid.stimuli.event.block.BlockUseEvent;
+import xyz.nucleoid.stimuli.event.world.SnowFallEvent;
 
 import java.util.Iterator;
 import java.util.List;
@@ -98,9 +115,13 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static net.minecraft.core.cauldron.CauldronInteraction.BANNER;
+import static net.minecraft.core.cauldron.CauldronInteraction.DYED_ITEM;
+
 
 @SuppressWarnings("unused")
 public class BlockEventListener {
+
     private final PlotAreaManager plotAreaManager;
     private final WorldEdit worldEdit;
 
@@ -112,6 +133,8 @@ public class BlockEventListener {
         Stimuli.global().listen(BlockPlaceEvent.AFTER, this::blockCreate);
         Stimuli.global().listen(BlockBreakEvent.EVENT, this::blockDestroy);
         Stimuli.global().listen(BlockRandomTickEvent.EVENT, this::onBlockSpread);
+        UseCauldronCallback.EVENT.register(this::onCauldronEmpty);
+        Stimuli.global().listen(SnowFallEvent.EVENT, this::onSnowFall);
     }
 
     public static void sendBlockChange(final GlobalPos bloc, final BlockState data) {
@@ -119,7 +142,7 @@ public class BlockEventListener {
             String world = FabricWorld.of(bloc.dimension()).getName();
             int x = bloc.pos().getX();
             int z = bloc.pos().getZ();
-            int distance = FabricPlatform.SERVER.getLevel(bloc.dimension()).getChunkSource().chunkMap.viewDistance*16;
+            int distance = FabricPlatform.SERVER.getLevel(bloc.dimension()).getChunkSource().chunkMap.viewDistance * 16;
 
             for (final PlotPlayer<?> player : PlotSquared.platform().playerManager().getPlayers()) {
                 Location location = player.getLocation();
@@ -134,7 +157,12 @@ public class BlockEventListener {
     }
 
 
-    public InteractionResult blockCreate(ServerPlayer serverPlayer, ServerLevel serverLevel, BlockPos blockPos, BlockState blockState) {
+    public InteractionResult blockCreate(
+            ServerPlayer serverPlayer,
+            ServerLevel serverLevel,
+            BlockPos blockPos,
+            BlockState blockState
+    ) {
         Location location = FabricUtil.adapt(GlobalPos.of(serverLevel.dimension(), blockPos));
         PlotArea area = location.getPlotArea();
         if (area == null) {
@@ -288,7 +316,9 @@ public class BlockEventListener {
             return InteractionResult.PASS;
         }
         if (this.worldEdit != null && pp.getAttribute("worldedit")) {
-            if (player.getMainHandItem().getItem() == BuiltInRegistries.ITEM.get(new ResourceLocation(this.worldEdit.getConfiguration().wandItem))) {
+            if (player
+                    .getMainHandItem()
+                    .getItem() == BuiltInRegistries.ITEM.get(new ResourceLocation(this.worldEdit.getConfiguration().wandItem))) {
                 return InteractionResult.PASS;
             }
         }
@@ -354,120 +384,123 @@ public class BlockEventListener {
         return InteractionResult.PASS;
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST)
-    public void onCauldronEmpty(CauldronLevelChangeEvent event) {
-        Entity entity = event.getEntity();
-        Location location = FabricUtil.adapt(event.getBlock().getLocation());
+    public InteractionResult onCauldronEmpty(
+            BlockState blockState,
+            Level level,
+            BlockPos blockPos,
+            Player player,
+            InteractionHand interactionHand,
+            BlockHitResult blockHitResult
+    ) {
+        Entity entity = player;
+        Location location = FabricUtil.adapt(GlobalPos.of(level.dimension(), blockPos));
         PlotArea area = location.getPlotArea();
         if (area == null) {
-            return;
+            return InteractionResult.PASS;
         }
         Plot plot = area.getPlot(location);
+        ItemStack itemStack = player.getItemInHand(interactionHand);
+        CauldronInteraction cauldronInteraction = ((CauldronBlock) blockState.getBlock()).interactions.get(itemStack.getItem());
         // TODO Add flags for specific control over cauldron changes (rain, dripstone...)
-        switch (event.getReason()) {
-            case BANNER_WASH, ARMOR_WASH, EXTINGUISH -> {
-                if (entity instanceof Player player) {
-                    BukkitPlayer plotPlayer = BukkitUtil.adapt(player);
-                    if (plot != null) {
-                        if (!plot.hasOwner()) {
-                            if (plotPlayer.hasPermission(Permission.PERMISSION_ADMIN_INTERACT_UNOWNED)) {
-                                return;
-                            }
-                        } else if (!plot.isAdded(plotPlayer.getUUID())) {
-                            if (plotPlayer.hasPermission(Permission.PERMISSION_ADMIN_INTERACT_OTHER)) {
-                                return;
-                            }
-                        } else {
-                            return;
+        // Bucket empty, Bucket fill, Bottle empty, Bottle fill are already handled in PlayerInteract event
+        // Evaporation or Unknown reasons do not need to be cancelled as they are considered natural causes
+        if (cauldronInteraction.equals(BANNER) || cauldronInteraction.equals(DYED_ITEM)) {
+            if (entity instanceof ServerPlayer player1) {
+                FabricPlayer plotPlayer = FabricUtil.adapt(player1);
+                if (plot != null) {
+                    if (!plot.hasOwner()) {
+                        if (plotPlayer.hasPermission(Permission.PERMISSION_ADMIN_INTERACT_UNOWNED)) {
+                            return InteractionResult.PASS;
+                        }
+                    } else if (!plot.isAdded(plotPlayer.getUUID())) {
+                        if (plotPlayer.hasPermission(Permission.PERMISSION_ADMIN_INTERACT_OTHER)) {
+                            return InteractionResult.PASS;
                         }
                     } else {
-                        if (plotPlayer.hasPermission(Permission.PERMISSION_ADMIN_INTERACT_ROAD)) {
-                            return;
-                        }
-                        if (this.worldEdit != null && plotPlayer.getAttribute("worldedit")) {
-                            if (player.getInventory().getItemInMainHand().getType() == Material
-                                    .getMaterial(this.worldEdit.getConfiguration().wandItem)) {
-                                return;
-                            }
+                        return InteractionResult.FAIL;
+                    }
+                } else {
+                    if (plotPlayer.hasPermission(Permission.PERMISSION_ADMIN_INTERACT_ROAD)) {
+                        return InteractionResult.PASS;
+                    }
+                    if (this.worldEdit != null && plotPlayer.getAttribute("worldedit")) {
+                        if (player.getMainHandItem().getItem() ==
+                                BuiltInRegistries.ITEM.get(new ResourceLocation(this.worldEdit.getConfiguration().wandItem))) {
+                            return InteractionResult.FAIL;
                         }
                     }
                 }
-                if (event.getReason() == CauldronLevelChangeEvent.ChangeReason.EXTINGUISH && event.getEntity() != null) {
-                    event.getEntity().setFireTicks(0);
-                }
-                // Though the players fire ticks are modified,
-                // the cauldron water level change is cancelled and the event should represent that.
-                event.setCancelled(true);
             }
-            default -> {
-                // Bucket empty, Bucket fill, Bottle empty, Bottle fill are already handled in PlayerInteract event
-                // Evaporation or Unknown reasons do not need to be cancelled as they are considered natural causes
-            }
+            /*
+            if (cauldronInteraction == CauldronInteraction.FILL_LAVA && entity != null) {
+                entity.setRemainingFireTicks(0);
+            }*/
+            // Though the players fire ticks are modified,
+            // the cauldron water level change is cancelled and the event should represent that.
+            return InteractionResult.FAIL;
         }
+        return InteractionResult.PASS;
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onBlockForm(BlockFormEvent event) {
-        if (event instanceof EntityBlockFormEvent) {
-            return; // handled below
-        }
-        Block block = event.getBlock();
-        Location location = BukkitUtil.adapt(block.getLocation());
+    public InteractionResult onSnowFall(ServerLevel serverLevel, BlockPos pos) {
+        Location location = FabricUtil.adapt(GlobalPos.of(serverLevel.dimension(), pos));
         if (location.isPlotRoad()) {
-            event.setCancelled(true);
-            return;
+            return InteractionResult.FAIL;
         }
         PlotArea area = location.getPlotArea();
         if (area == null) {
-            return;
+            return InteractionResult.PASS;
         }
         Plot plot = area.getOwnedPlot(location);
         if (plot == null) {
-            return;
+            return InteractionResult.FAIL;
         }
         if (!area.buildRangeContainsY(location.getY())) {
-            event.setCancelled(true);
-            return;
+            return InteractionResult.FAIL;
         }
-        if (org.bukkit.Tag.SNOW.isTagged(event.getNewState().getType())) {
-            if (!plot.getFlag(SnowFormFlag.class)) {
-                plot.debug("Snow could not form because snow-form = false");
-                event.setCancelled(true);
-            }
-            return;
+        if (!plot.getFlag(SnowFormFlag.class)) {
+            plot.debug("Snow could not form because snow-form = false");
+            return InteractionResult.FAIL;
         }
+        return InteractionResult.PASS;
+
+
+        /* TODO CREATE EVENTS FOR ICE FORMING AND CONCRETE FORMING
         if (org.bukkit.Tag.ICE.isTagged(event.getNewState().getType())) {
             if (!plot.getFlag(IceFormFlag.class)) {
                 plot.debug("Ice could not form because ice-form = false");
-                event.setCancelled(true);
+                return InteractionResult.FAIL;
             }
         }
         if (event.getNewState().getType().toString().endsWith("CONCRETE")) {
             if (!plot.getFlag(ConcreteHardenFlag.class)) {
                 plot.debug("Concrete powder could not harden because concrete-harden = false");
-                event.setCancelled(true);
+                return InteractionResult.FAIL;
             }
-        }
+        }*/
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onEntityBlockForm(EntityBlockFormEvent event) {
+    /*
+    public InteractionResult onFrostWalkerEnchantmentOnEntityMoved() {
+
+    }
+
+    public InteractionResult onSnowGolemAiStep() {
         String world = event.getBlock().getWorld().getName();
         if (!this.plotAreaManager.hasPlotArea(world)) {
-            return;
+            return InteractionResult.PASS;
         }
-        Location location = BukkitUtil.adapt(event.getBlock().getLocation());
+        Location location = FabricUtil.adapt(event.getBlock().getLocation());
         PlotArea area = location.getPlotArea();
         if (area == null) {
-            return;
+            return InteractionResult.PASS;
         }
         Plot plot = area.getOwnedPlot(location);
         if (plot == null) {
-            event.setCancelled(true);
-            return;
+           return InteractionResult.FAIL;
         }
         Class<? extends BooleanFlag<?>> flag;
-        if (org.bukkit.Tag.SNOW.isTagged(event.getNewState().getType())) {
+        if (Tag.SNOW.isTagged(event.getNewState().getType())) {
             flag = SnowFormFlag.class;
         } else if (org.bukkit.Tag.ICE.isTagged(event.getNewState().getType())) {
             flag = IceFormFlag.class;
@@ -500,7 +533,7 @@ public class BlockEventListener {
                     event.getNewState().getType(),
                     flag == SnowFormFlag.class ? "snow-form" : "ice-form"
             ));
-            event.setCancelled(true);
+            return InteractionResult.FAIL;
         }
     }
 
@@ -728,21 +761,11 @@ public class BlockEventListener {
                v
                 <-----O-----> x
              */
-            if (BukkitUtil.adapt(location.clone().add(-1, 0, 1)  /* A */).getPlot() != null
-                    || BukkitUtil.adapt(location.clone().add(1, 0, 0)   /* B */).getPlot() != null
-                    || BukkitUtil.adapt(location.clone().add(1, 0, 1)   /* C */).getPlot() != null
-                    || BukkitUtil.adapt(location.clone().add(-1, 0, 0)  /* D */).getPlot() != null
-                    || BukkitUtil.adapt(location.clone().add(1, 0, 0)   /* E */).getPlot() != null
-                    || BukkitUtil.adapt(location.clone().add(-1, 0, -1) /* F */).getPlot() != null
-                    || BukkitUtil.adapt(location.clone().add(0, 0, -1)  /* G */).getPlot() != null
-                    || BukkitUtil.adapt(location.clone().add(1, 0, 1)   /* H */).getPlot() != null) {
-                event.setCancelled(true);
-            }
-        }
+
     }
 
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+   /* @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onGrow(BlockGrowEvent event) {
         Block block = event.getBlock();
         Location location = BukkitUtil.adapt(block.getLocation());
@@ -766,7 +789,7 @@ public class BlockEventListener {
         }
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+  /*  @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onBlockPistonExtend(BlockPistonExtendEvent event) {
         Block block = event.getBlock();
         Location location = BukkitUtil.adapt(block.getLocation());
@@ -822,7 +845,7 @@ public class BlockEventListener {
         }
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+   /* @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onBlockPistonRetract(BlockPistonRetractEvent event) {
         Block block = event.getBlock();
         Location location = BukkitUtil.adapt(block.getLocation());
@@ -866,7 +889,7 @@ public class BlockEventListener {
         }
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+   /* @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onBlockDispense(BlockDispenseEvent event) {
         if (!this.plotAreaManager.hasPlotArea(event.getBlock().getWorld().getName())) {
             return;
@@ -896,7 +919,7 @@ public class BlockEventListener {
         }
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    /*@EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onStructureGrow(StructureGrowEvent event) {
         if (!this.plotAreaManager.hasPlotArea(event.getWorld().getName())) {
             return;
@@ -951,13 +974,14 @@ public class BlockEventListener {
              */
 
             // Are plot and origin different AND are both plots merged
+            /*
             if (!Objects.equals(plot, origin) && (!plot.isMerged() && !origin.isMerged())) {
                 event.getBlocks().remove(i);
             }
         }
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+   /* @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onBigBoom(BlockExplodeEvent event) {
         Block block = event.getBlock();
         Location location = BukkitUtil.adapt(block.getLocation());
@@ -1005,9 +1029,9 @@ public class BlockEventListener {
             event.setCancelled(true);
         }
 
-    }
+    }*/
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+   /* @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onBlockIgnite(BlockIgniteEvent event) {
         Player player = event.getPlayer();
         Entity ignitingEntity = event.getIgnitingEntity();
@@ -1112,9 +1136,9 @@ public class BlockEventListener {
                 }
             }
         }
-    }
+    }*/
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    /*@EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onLeavesDecay(LeavesDecayEvent event) {
         Block block = event.getBlock();
         Location location = BukkitUtil.adapt(block.getLocation());
@@ -1132,9 +1156,9 @@ public class BlockEventListener {
             event.setCancelled(true);
         }
 
-    }
+    }*/
 
-    @EventHandler(ignoreCancelled = true)
+   /* @EventHandler(ignoreCancelled = true)
     public void onSpongeAbsorb(SpongeAbsorbEvent event) {
         Block sponge = event.getBlock();
         Location location = BukkitUtil.adapt(sponge.getLocation());
@@ -1161,12 +1185,12 @@ public class BlockEventListener {
             // if no water is being absorbed
             event.setCancelled(true);
         }
-    }
+    }*/
 
     /*
      * BlockMultiPlaceEvent is called unrelated to the BlockPlaceEvent itself and therefore doesn't respect the cancellation.
      */
-    @EventHandler(ignoreCancelled = true, priority = EventPriority.HIGHEST)
+   /* @EventHandler(ignoreCancelled = true, priority = EventPriority.HIGHEST)
     public void onBlockMultiPlace(BlockMultiPlaceEvent event) {
         // Check if the generic block place event would be cancelled
         blockCreate(event);
@@ -1213,5 +1237,4 @@ public class BlockEventListener {
         }
 
     }
-
-}
+*/
