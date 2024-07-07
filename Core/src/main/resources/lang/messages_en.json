@@ -190,6 +190,7 @@
   "titles.title_entered_plot": "<gold>Plot: <world>;<plot></gold>",
   "titles.title_entered_plot_sub": "<dark_aqua>Owned by <owner></dark_aqua>",
   "core.prefix": "<dark_gray>[</dark_gray><gold>P2</gold><dark_gray>] </dark_gray>",
+  "placeholder.miniplaceholders.hooked": "<prefix><gold>PlotSquared hooked into MiniPlaceholders</gold>",
   "core.enabled": "<prefix><gold><value> is now enabled.</gold>",
   "placeholder.hooked": "<prefix><gold>PlotSquared hooked into MVdWPlaceholderAPI</gold>",
   "placeholder.nan": "Not a number",

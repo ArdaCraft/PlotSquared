@@ -18,94 +18,66 @@
  */
 package com.plotsquared.fabric.listener;
 
-import com.destroystokyo.paper.event.block.BeaconEffectEvent;
-import com.destroystokyo.paper.event.block.BlockDestroyEvent;
-import com.destroystokyo.paper.event.entity.EntityPathfindEvent;
-import com.destroystokyo.paper.event.entity.PlayerNaturallySpawnCreaturesEvent;
-import com.destroystokyo.paper.event.entity.PreCreatureSpawnEvent;
-import com.destroystokyo.paper.event.entity.PreSpawnerSpawnEvent;
-import com.destroystokyo.paper.event.entity.SlimePathfindEvent;
-import com.destroystokyo.paper.event.player.PlayerLaunchProjectileEvent;
-import com.destroystokyo.paper.event.server.AsyncTabCompleteEvent;
 import com.google.inject.Inject;
-import com.plotsquared.bukkit.util.BukkitUtil;
-import com.plotsquared.core.command.Command;
-import com.plotsquared.core.command.MainCommand;
-import com.plotsquared.core.configuration.Settings;
-import com.plotsquared.core.configuration.caption.TranslatableCaption;
 import com.plotsquared.core.location.Location;
-import com.plotsquared.core.permissions.Permission;
-import com.plotsquared.core.player.PlotPlayer;
 import com.plotsquared.core.plot.Plot;
 import com.plotsquared.core.plot.PlotArea;
-import com.plotsquared.core.plot.flag.FlagContainer;
-import com.plotsquared.core.plot.flag.implementations.BeaconEffectsFlag;
-import com.plotsquared.core.plot.flag.implementations.DoneFlag;
-import com.plotsquared.core.plot.flag.implementations.FishingFlag;
-import com.plotsquared.core.plot.flag.implementations.ProjectilesFlag;
 import com.plotsquared.core.plot.flag.implementations.TileDropFlag;
-import com.plotsquared.core.plot.flag.types.BooleanFlag;
 import com.plotsquared.core.plot.world.PlotAreaManager;
-import com.plotsquared.core.util.PlotFlagUtil;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.minimessage.tag.Tag;
-import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
-import org.bukkit.Chunk;
-import org.bukkit.block.Block;
-import org.bukkit.block.TileState;
-import org.bukkit.entity.Entity;
-import org.bukkit.entity.EntityType;
-import org.bukkit.entity.Player;
-import org.bukkit.entity.Projectile;
-import org.bukkit.entity.Slime;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.EventPriority;
-import org.bukkit.event.Listener;
-import org.bukkit.event.block.BlockPlaceEvent;
-import org.bukkit.event.entity.CreatureSpawnEvent;
-import org.bukkit.projectiles.ProjectileSource;
+import com.plotsquared.fabric.util.FabricUtil;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.GlobalPos;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.InteractionResultHolder;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.state.BlockState;
 import org.checkerframework.checker.nullness.qual.NonNull;
+import xyz.nucleoid.stimuli.Stimuli;
+import xyz.nucleoid.stimuli.event.block.BlockDropItemsEvent;
 
-import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
-import java.util.Locale;
-import java.util.regex.Pattern;
 
 /**
  * Events specific to Paper. Some toit nups here
  */
 @SuppressWarnings("unused")
-public class PaperListener implements Listener {
+public class PaperListener {
 
     private final PlotAreaManager plotAreaManager;
-    private Chunk lastChunk;
+    //private Chunk lastChunk;
 
     @Inject
     public PaperListener(final @NonNull PlotAreaManager plotAreaManager) {
         this.plotAreaManager = plotAreaManager;
+        Stimuli.global().listen(BlockDropItemsEvent.EVENT, this::onBlockDropItems);
     }
 
-    @EventHandler(ignoreCancelled = true, priority = EventPriority.LOWEST)
-    public void onBlockDestroy(final BlockDestroyEvent event) {
-        Location location = BukkitUtil.adapt(event.getBlock().getLocation());
+
+    public InteractionResultHolder<List<ItemStack>> onBlockDropItems(Entity entity, ServerLevel serverLevel, BlockPos blockPos,
+    BlockState blockState,
+                                                    List<ItemStack> dropStacks) {
+        Location location = FabricUtil.adapt(GlobalPos.of(serverLevel.dimension(), blockPos));
         PlotArea area = location.getPlotArea();
         if (area == null) {
-            return;
+            return InteractionResultHolder.pass(dropStacks);
         }
         Plot plot = area.getPlot(location);
         if (plot != null) {
-            event.setWillDrop(plot.getFlag(TileDropFlag.class));
+            if(plot.getFlag(TileDropFlag.class)) {
+                return InteractionResultHolder.pass(dropStacks);
+            }
+            return InteractionResultHolder.fail(List.of());
         }
+        return InteractionResultHolder.pass(dropStacks);
     }
-
-    @EventHandler
-    public void onEntityPathfind(EntityPathfindEvent event) {
+/*
+    public void onEntityPathfind() {
         if (!Settings.Paper_Components.ENTITY_PATHING) {
             return;
         }
-        Location toLoc = BukkitUtil.adapt(event.getLoc());
-        Location fromLoc = BukkitUtil.adapt(event.getEntity().getLocation());
+        Location toLoc = FabricUtil.adapt(event.getLoc());
+        Location fromLoc = FabricUtil.adapt(event.getEntity().getLocation());
         PlotArea tarea = toLoc.getPlotArea();
         if (tarea == null) {
             return;
@@ -318,7 +290,7 @@ public class PaperListener implements Listener {
      * but here it is anyway :)
      *
      * @param event Paper's PlayerLaunchProjectileEvent
-     */
+     *
     @EventHandler
     public void onProjectileLaunch(PlayerLaunchProjectileEvent event) {
         if (!Settings.Paper_Components.PLAYER_PROJECTILE) {
@@ -472,5 +444,5 @@ public class PaperListener implements Listener {
         BooleanFlag<?> flag = container.getFlag(flagClass);
         return flag == null ? defaultValue : flag.getValue();
     }
-
+*/
 }

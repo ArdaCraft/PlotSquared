@@ -23,7 +23,9 @@ import com.plotsquared.core.PlotSquared;
 import com.plotsquared.core.generator.GeneratorWrapper;
 import com.plotsquared.core.plot.world.PlotAreaManager;
 import com.plotsquared.core.plot.world.SinglePlotAreaManager;
+import com.plotsquared.fabric.FabricPlatform;
 import com.plotsquared.fabric.generator.FabricPlotGenerator;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerChunkEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerWorldEvents;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -33,6 +35,8 @@ import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.ChunkGenerator;
 import org.checkerframework.checker.nullness.qual.NonNull;
 
+import java.util.logging.Logger;
+
 @SuppressWarnings("unused")
 public class WorldEvents {
 
@@ -41,17 +45,17 @@ public class WorldEvents {
     @Inject
     public WorldEvents(final @NonNull PlotAreaManager plotAreaManager) {
         this.plotAreaManager = plotAreaManager;
-        ServerWorldEvents.LOAD.register((server, world) -> {
-
-        });
+        ServerWorldEvents.LOAD.register(this::onWorldInit);
     }
 
     public void onWorldInit(MinecraftServer server, ServerLevel serverLevel) {
         ServerLevel world = serverLevel;
-        String name = world.serverLevelData.getLevelName();
+        String name = world.dimension().location().getPath();
         if (this.plotAreaManager instanceof final SinglePlotAreaManager single) {
             if (single.isWorld(name)) {
-                world.getChunkSource().removeRegionTicket(TicketType.START, new ChunkPos(world.getSharedSpawnPos()), 11, Unit.INSTANCE);
+                world.getChunkSource().removeRegionTicket(TicketType.START, new ChunkPos(world.getSharedSpawnPos()), 11,
+                        Unit.INSTANCE
+                );
                 return;
             }
         }

@@ -9,14 +9,24 @@
   "license": "All-Rights-Reserved",
   "icon": "assets/plotsquared-fabric/icon.png",
   "environment": "server",
-  "entrypoints": {},
+  "entrypoints": {
+    "main": [
+      "com.plotsquared.fabric.FabricPlatform"
+    ]
+  },
   "mixins": [
     "plotsquared-fabric.mixins.json"
   ],
   "depends": {
     "fabricloader": ">=${loader_version}",
     "fabric": "*",
-    "minecraft": "${minecraft_version}"
+    "minecraft": "${minecraft_version}",
+    "worldedit": "*"
   },
-  "accessWidener": "plotsquared-fabric.accessWidener"
+  "accessWidener": "plotsquared-fabric.accessWidener",
+  "custom" : {
+    "loom:injected_interfaces": {
+      "net/minecraft/class_3031": ["com/plotsquared/fabric/listener/interfaces/BlockSetStorage"]
+    }
+  }
 }

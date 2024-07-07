@@ -32,17 +32,17 @@ public class BlockStatePopulator extends BlockPopulator {
             @NonNull final WorldGenRegion limitedRegion
     ) {
         PlotArea area =
-                UncheckedWorldLocation.at(worldInfo.serverLevelData.getLevelName(), chunkX << 4, 0, chunkZ << 4).getPlotArea();
+                UncheckedWorldLocation.at(worldInfo.dimension().location().getPath().toString(), chunkX << 4, 0, chunkZ << 4).getPlotArea();
         if (area == null || (area instanceof HybridPlotWorld hpw && !hpw.populationNeeded()) || area instanceof SinglePlotArea) {
             return;
         }
         LimitedRegionWrapperQueue wrapped = new LimitedRegionWrapperQueue(limitedRegion);
         // It is possible for the region to be larger than the chunk, but there is no reason for P2 to need to populate
         // outside of the actual chunk area.
-        Location min = UncheckedWorldLocation.at(worldInfo.serverLevelData.getLevelName(), chunkX << 4, worldInfo.getMinBuildHeight(),
+        Location min = UncheckedWorldLocation.at(worldInfo.dimension().location().getPath().toString(), chunkX << 4, worldInfo.getMinBuildHeight(),
                 chunkZ << 4);
         Location max = UncheckedWorldLocation.at(
-                worldInfo.serverLevelData.getLevelName(),
+                worldInfo.dimension().location().getPath().toString(),
                 (chunkX << 4) + 15,
                 worldInfo.getMaxBuildHeight(),
                 (chunkZ << 4) + 15

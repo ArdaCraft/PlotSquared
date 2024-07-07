@@ -30,7 +30,7 @@ public class FabricAugmentedGenerator extends BlockPopulator {
         queue.setSideEffectSet(SideEffectSet.none());
         queue.setBiomesEnabled(false);
         queue.setChunkObject(source);
-        AugmentedUtils.generateChunk(world.serverLevelData.getLevelName(), source.getPos().x, source.getPos().z, queue);
+        AugmentedUtils.generateChunk(world.dimension().location().getPath().toString(), source.getPos().x, source.getPos().z, queue);
         queue.enqueue();
     }
 

@@ -37,17 +37,33 @@ import com.plotsquared.core.plot.world.PlotAreaManager;
 import com.plotsquared.core.util.EventDispatcher;
 import com.plotsquared.core.util.PlotFlagUtil;
 import com.plotsquared.fabric.FabricPlatform;
+import com.plotsquared.fabric.data.PlotSquaredDataAttachments;
+import com.plotsquared.fabric.listener.event.EntityTypeCreateCallback;
 import com.plotsquared.fabric.util.FabricEntityUtil;
 import com.plotsquared.fabric.util.FabricUtil;
 import com.sk89q.worldedit.world.block.BlockType;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
+import net.fabricmc.fabric.api.event.player.UseEntityCallback;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.GlobalPos;
-import net.minecraft.server.level.ServerEntity;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.damagesource.DamageTypes;
+import net.minecraft.world.entity.AgeableMob;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.MobSpawnType;
+import net.minecraft.world.entity.item.FallingBlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
 import org.checkerframework.checker.nullness.qual.NonNull;
+import xyz.nucleoid.stimuli.Stimuli;
+import xyz.nucleoid.stimuli.event.entity.EntityDamageEvent;
 import xyz.nucleoid.stimuli.event.entity.EntitySpawnEvent;
+
+import java.util.function.Consumer;
 
 
 @SuppressWarnings("unused")
@@ -67,16 +83,20 @@ public class EntityEventListener {
         this.platform = platform;
         this.plotAreaManager = plotAreaManager;
         this.eventDispatcher = eventDispatcher;
-
+        Stimuli.global().listen(EntityDamageEvent.EVENT, this::onEntityCombustByEntity);
+        EntityTypeCreateCallback.EVENT.register(this::creatureSpawnEvent);
+        //Stimuli.global().listen(EntitySpawnEvent.EVENT, this::onEntityFall);
     }
 
-    public void onEntityCombustByEntity(EntityCombustByEntityEvent event) {
-        onEntityDamageByEntityCommon(event.getCombuster(), event.getEntity(), EntityDamageEvent.DamageCause.FIRE_TICK, event);
+    public InteractionResult onEntityCombustByEntity(LivingEntity entity, DamageSource source, float amount) {
+        if (source.is(DamageTypes.ON_FIRE)) {
+            return onEntityDamageByEntityCommon(source.getEntity(), entity, source);
+        }
+        return InteractionResult.PASS;
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST)
-    public void onEntityDamageByEntityEvent(EntityDamageByEntityEvent event) {
-        onEntityDamageByEntityCommon(event.getDamager(), event.getEntity(), event.getCause(), event);
+    public InteractionResult onEntityDamageByEntityEvent(LivingEntity entity, DamageSource source, float amount) {
+        return onEntityDamageByEntityCommon(source.getEntity(), entity, source);
     }
 
     private InteractionResult onEntityDamageByEntityCommon(
@@ -84,133 +104,143 @@ public class EntityEventListener {
             final Entity victim,
             final DamageSource cause
     ) {
-        Location location = FabricUtil.adapt(GlobalPos.of(damager.level().dimension(), damager.blockPosition()));
-        if (!this.plotAreaManager.hasPlotArea(location.getWorldName())) {
-            return;
-        }
-        if (!FabricEntityUtil.entityDamage(damager, victim, cause)) {
-            if (event.isCancelled()) {
-                if (victim instanceof Ageable ageable) {
+        if (damager != null) {
+            Location location = FabricUtil.adapt(GlobalPos.of(damager.level().dimension(), damager.blockPosition()));
+            if (!this.plotAreaManager.hasPlotArea(location.getWorldName())) {
+                return InteractionResult.PASS;
+            }
+            if (!FabricEntityUtil.entityDamage(damager, victim, cause)) {
+                if (victim instanceof AgeableMob ageable) {
                     if (ageable.getAge() == -24000) {
                         ageable.setAge(0);
-                        ageable.setAdult();
+                        ageable.setBaby(false);
+                    }
+                }
+                return InteractionResult.FAIL;
+            }
+        }
+        return InteractionResult.PASS;
+    }
+
+    public InteractionResult creatureSpawnEvent(
+            ServerLevel serverLevel,
+            CompoundTag compoundTag,
+            Consumer<?> consumer,
+            BlockPos blockPos,
+            MobSpawnType mobSpawnType,
+            boolean bl,
+            boolean bl2,
+            Object entitySpawned
+    ) {
+        if (entitySpawned instanceof Entity entity) {
+            Location location = FabricUtil.adapt(GlobalPos.of(entity.level().dimension(), entity.blockPosition()));
+            PlotArea area = location.getPlotArea();
+            if (area == null) {
+                return InteractionResult.PASS;
+            }
+            // Armour-stands are handled elsewhere and should not be handled by area-wide entity-spawn options
+            if (entity.getType() == EntityType.ARMOR_STAND) {
+                return InteractionResult.FAIL;
+            }
+            switch (mobSpawnType.name().toUpperCase()) {
+                case "DISPENSE_EGG", "EGG", "OCELOT_BABY", "SPAWNER_EGG" -> {
+                    if (!area.isSpawnEggs()) {
+                        entity.remove(Entity.RemovalReason.DISCARDED);
+                        return InteractionResult.FAIL;
+                    }
+                }
+                case "REINFORCEMENTS", "NATURAL", "MOUNT", "PATROL", "RAID", "SHEARED", "SILVERFISH_BLOCK", "ENDER_PEARL",
+                        "TRAP", "VILLAGE_DEFENSE", "VILLAGE_INVASION", "BEEHIVE", "CHUNK_GEN", "NETHER_PORTAL",
+                        "FROZEN", "SPELL", "DEFAULT" -> {
+                    if (!area.isMobSpawning()) {
+                        entity.remove(Entity.RemovalReason.DISCARDED);
+                        return InteractionResult.FAIL;
+                    }
+                }
+                case "BREEDING", "DUPLICATION" -> {
+                    if (!area.isSpawnBreeding()) {
+                        entity.remove(Entity.RemovalReason.DISCARDED);
+                        return InteractionResult.FAIL;
+                    }
+                }
+                case "CUSTOM" -> {
+                    if (!area.isSpawnCustom()) {
+                        entity.remove(Entity.RemovalReason.DISCARDED);
+                        return InteractionResult.FAIL;
+                    }
+                    // No need to clutter metadata if running paper
+                    //if (!PaperLib.isPaper()) {
+                    entity.setAttached(PlotSquaredDataAttachments.PS_CUSTOM_SPAWNED, true);
+                    // }
+                    return InteractionResult.PASS; // Don't cancel if mob spawning is disabled
+                }
+                case "BUILD_IRONGOLEM", "BUILD_SNOWMAN", "BUILD_WITHER" -> {
+                    if (!area.isSpawnCustom()) {
+                        entity.remove(Entity.RemovalReason.DISCARDED);
+                        return InteractionResult.FAIL;
+                    }
+                }
+                case "SPAWNER" -> {
+                    if (!area.isMobSpawnerSpawning()) {
+                        entity.remove(Entity.RemovalReason.DISCARDED);
+                        return InteractionResult.FAIL;
                     }
                 }
             }
-            event.setCancelled(true);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void creatureSpawnEvent(CreatureSpawnEvent event) {
-        Entity entity = event.getEntity();
-        Location location = BukkitUtil.adapt(entity.getLocation());
-        PlotArea area = location.getPlotArea();
-        if (area == null) {
-            return;
-        }
-        // Armour-stands are handled elsewhere and should not be handled by area-wide entity-spawn options
-        if (entity.getType() == EntityType.ARMOR_STAND) {
-            return;
-        }
-        CreatureSpawnEvent.SpawnReason reason = event.getSpawnReason();
-        switch (reason.toString()) {
-            case "DISPENSE_EGG", "EGG", "OCELOT_BABY", "SPAWNER_EGG" -> {
-                if (!area.isSpawnEggs()) {
-                    event.setCancelled(true);
-                    return;
-                }
-            }
-            case "REINFORCEMENTS", "NATURAL", "MOUNT", "PATROL", "RAID", "SHEARED", "SILVERFISH_BLOCK", "ENDER_PEARL",
-                    "TRAP", "VILLAGE_DEFENSE", "VILLAGE_INVASION", "BEEHIVE", "CHUNK_GEN", "NETHER_PORTAL",
-                    "FROZEN", "SPELL", "DEFAULT" -> {
+            Plot plot = area.getOwnedPlotAbs(location);
+            if (plot == null) {
                 if (!area.isMobSpawning()) {
-                    event.setCancelled(true);
-                    return;
+                    entity.remove(Entity.RemovalReason.DISCARDED);
+                    return InteractionResult.FAIL;
                 }
+                return InteractionResult.PASS;
             }
-            case "BREEDING", "DUPLICATION" -> {
-                if (!area.isSpawnBreeding()) {
-                    event.setCancelled(true);
-                    return;
-                }
-            }
-            case "CUSTOM" -> {
-                if (!area.isSpawnCustom()) {
-                    event.setCancelled(true);
-                    return;
-                }
-                // No need to clutter metadata if running paper
-                if (!PaperLib.isPaper()) {
-                    entity.setMetadata("ps_custom_spawned", new FixedMetadataValue(this.platform, true));
-                }
-                return; // Don't cancel if mob spawning is disabled
-            }
-            case "BUILD_IRONGOLEM", "BUILD_SNOWMAN", "BUILD_WITHER" -> {
-                if (!area.isSpawnCustom()) {
-                    event.setCancelled(true);
-                    return;
-                }
-            }
-            case "SPAWNER" -> {
-                if (!area.isMobSpawnerSpawning()) {
-                    event.setCancelled(true);
-                    return;
-                }
+            if (FabricEntityUtil.checkEntity(entity, plot.getBasePlot(false))) {
+                entity.remove(Entity.RemovalReason.DISCARDED);
+                return InteractionResult.FAIL;
             }
         }
-        Plot plot = area.getOwnedPlotAbs(location);
-        if (plot == null) {
-            if (!area.isMobSpawning()) {
-                event.setCancelled(true);
-            }
-            return;
-        }
-        if (BukkitEntityUtil.checkEntity(entity, plot.getBasePlot(false))) {
-            event.setCancelled(true);
-        }
+        return InteractionResult.PASS;
     }
 
-    @EventHandler(ignoreCancelled = true, priority = EventPriority.HIGHEST)
-    public void onEntityFall(EntityChangeBlockEvent event) {
-        if (event.getEntityType() != EntityType.FALLING_BLOCK) {
-            return;
-        }
-        Block block = event.getBlock();
-        World world = block.getWorld();
-        String worldName = world.getName();
-        if (!this.plotAreaManager.hasPlotArea(worldName)) {
-            return;
-        }
-        Location location = BukkitUtil.adapt(block.getLocation());
-        PlotArea area = location.getPlotArea();
-        if (area == null) {
-            return;
-        }
-        Plot plot = area.getOwnedPlotAbs(location);
-        if (plot == null || plot.getFlag(DisablePhysicsFlag.class)) {
-            event.setCancelled(true);
-            if (plot != null) {
-                if (block.getType().hasGravity()) {
-                    BlockEventListener.sendBlockChange(block.getLocation(), block.getBlockData());
+    /*TODO CREATE FALLING BLOCK TICK CALLBACK
+    public InteractionResult onEntityFall(Entity entity) {
+        if(entity instanceof FallingBlockEntity fallingBlockEntity) {
+            BlockState block = fallingBlockEntity.getBlockState();
+            ServerLevel world = entity.getServer().getLevel(entity.level().dimension());
+            String worldName = world.serverLevelData.getLevelName();
+            if (!this.plotAreaManager.hasPlotArea(worldName)) {
+                return InteractionResult.PASS;
+            }
+            Location location = FabricUtil.adapt(GlobalPos.of(world.dimension(), entity.blockPosition()));
+            PlotArea area = location.getPlotArea();
+            if (area == null) {
+                return InteractionResult.PASS;
+            }
+            Plot plot = area.getOwnedPlotAbs(location);
+            if (plot == null || plot.getFlag(DisablePhysicsFlag.class)) {
+                if (plot != null) {
+                    if (!fallingBlockEntity.isNoGravity()) {
+                        BlockEventListener.sendBlockChange(GlobalPos.of(world.dimension(), entity.blockPosition()), block);
+                    }
+                    plot.debug("Falling block event was cancelled because disable-physics = true");
                 }
-                plot.debug("Falling block event was cancelled because disable-physics = true");
+                return InteractionResult.FAIL;
             }
-            return;
-        }
-        if (event.getTo().hasGravity()) {
-            Entity entity = event.getEntity();
-            List<MetadataValue> meta = entity.getMetadata("plot");
-            if (meta.isEmpty()) {
-                return;
+            if (event.getTo().hasGravity()) {
+                Entity entity = event.getEntity();
+                List<MetadataValue> meta = entity.getMetadata("plot");
+                if (meta.isEmpty()) {
+                    return;
+                }
+                Plot origin = (Plot) meta.get(0).value();
+                if (origin != null && !origin.equals(plot)) {
+                    event.setCancelled(true);
+                    entity.remove();
+                }
+            } else if (event.getTo() == Material.AIR) {
+                event.getEntity().setMetadata("plot", new FixedMetadataValue((Plugin) PlotSquared.platform(), plot));
             }
-            Plot origin = (Plot) meta.get(0).value();
-            if (origin != null && !origin.equals(plot)) {
-                event.setCancelled(true);
-                entity.remove();
-            }
-        } else if (event.getTo() == Material.AIR) {
-            event.getEntity().setMetadata("plot", new FixedMetadataValue((Plugin) PlotSquared.platform(), plot));
         }
     }
 
@@ -235,9 +265,8 @@ public class EntityEventListener {
             plot.debug(event.getEntity().getName() + " could not take damage because invincible = true");
             event.setCancelled(true);
         }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    }*/
+    /*
     public void onBigBoom(EntityExplodeEvent event) {
         Location location = BukkitUtil.adapt(event.getLocation());
         PlotArea area = location.getPlotArea();
@@ -383,22 +412,23 @@ public class EntityEventListener {
         this.lastRadius = event.getRadius() + 1;
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onVehicleCreate(VehicleCreateEvent event) {
-        Vehicle entity = event.getVehicle();
-        Location location = BukkitUtil.adapt(entity.getLocation());
-        PlotArea area = location.getPlotArea();
-        if (area == null) {
-            return;
+    public InteractionResult onVehicleCreate(Entity entity) {
+        if(entity.isVehicle()) {
+            Location location = FabricUtil.adapt(GlobalPos.of(entity.level().dimension(), entity.blockPosition()));
+            PlotArea area = location.getPlotArea();
+            if (area == null) {
+                return InteractionResult.PASS;
+            }
+            Plot plot = area.getOwnedPlotAbs(location);
+            if (plot == null || FabricEntityUtil.checkEntity(entity, plot)) {
+                entity.remove(Entity.RemovalReason.DISCARDED);
+                return InteractionResult.FAIL;
+            }
+            if (Settings.Enabled_Components.KILL_ROAD_VEHICLES) {
+                entity.setAttached(PlotSquaredDataAttachments.PLOT_DATA, plot);
+            }
         }
-        Plot plot = area.getOwnedPlotAbs(location);
-        if (plot == null || BukkitEntityUtil.checkEntity(entity, plot)) {
-            entity.remove();
-            return;
-        }
-        if (Settings.Enabled_Components.KILL_ROAD_VEHICLES) {
-            entity.setMetadata("plot", new FixedMetadataValue((Plugin) PlotSquared.platform(), plot));
-        }
+        return InteractionResult.PASS;
     }
-
+*/
 }

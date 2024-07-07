@@ -153,8 +153,8 @@ public abstract class PlotArea implements ComponentLike {
     private CuboidRegion region;
     private ConcurrentHashMap<String, Object> meta;
     private QuadMap<PlotCluster> clusters;
-    private String signMaterial = "OAK_WALL_SIGN";
-    private String legacySignMaterial = "WALL_SIGN";
+    private String signMaterial = "minecraft:oak_wall_sign";
+    private String legacySignMaterial = "wall_sign";
 
     public PlotArea(
             final @NonNull String worldName, final @Nullable String id,

@@ -18,7 +18,7 @@ import static com.plotsquared.core.util.ReflectionUtils.getRefClass;
 public class SingleWorldListener {
 
     public SingleWorldListener() throws Exception {
-        ServerChunkEvents.CHUNK_LOAD.register(this::handle);
+        //ServerChunkEvents.CHUNK_LOAD.register(this::handle);
     }
 
     public void markChunkAsClean(LevelChunk chunk) {
@@ -26,8 +26,7 @@ public class SingleWorldListener {
     }
 
     private void handle(ServerLevel serverLevel, LevelChunk chunk) {
-        ServerLevel world = serverLevel;
-        String name = world.serverLevelData.getLevelName();
+        String name = serverLevel.dimension().location().getPath();
         PlotAreaManager man = PlotSquared.get().getPlotAreaManager();
         if (!(man instanceof SinglePlotAreaManager)) {
             return;

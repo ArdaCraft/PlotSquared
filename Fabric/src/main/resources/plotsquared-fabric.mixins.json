@@ -1,20 +1,32 @@
 {
-  "required": true,
-  "minVersion": "0.8",
-  "package": "com.plotsquared.fabric.listener.mixin",
-  "compatibilityLevel": "JAVA_17",
-  "mixins": [
-    "AbstractCauldronBlockMixin",
+  "required" : true,
+  "minVersion" : "0.8",
+  "package" : "com.plotsquared.fabric.listener.mixin",
+  "compatibilityLevel" : "JAVA_17",
+  "mixins" : [
     "BaseFireBlockMixin",
     "BoatMixin",
     "BucketItemMixin",
+    "CauldronInteractionMixin",
+    "ConfiguredFeatureMixin",
     "EntityMixin",
+    "EntityTypeMixin",
+    "FarmBlockMixin",
+    "FeatureMixin",
+    "LevelAccessorMixin",
+    "LevelMixin",
+    "LevelWriterMixin",
+    "LivingEntityMixin",
+    "NeighborUpdaterMixin",
+    "PistonBaseBlockMixin",
     "ServerGamePacketListenerImplMixin",
-    "ServerPlayerMixin"
+    "ServerLevelMixin",
+    "ServerPlayerMixin",
+    "ThrownPotionMixin"
   ],
-  "client": [
+  "client" : [
   ],
-  "injectors": {
-    "defaultRequire": 1
+  "injectors" : {
+    "defaultRequire" : 1
   }
 }

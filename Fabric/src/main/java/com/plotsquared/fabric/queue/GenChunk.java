@@ -32,6 +32,7 @@ import com.sk89q.worldedit.WorldEdit;
 import com.sk89q.worldedit.fabric.FabricAdapter;
 import com.sk89q.worldedit.fabric.FabricWorldEdit;
 import com.sk89q.worldedit.function.pattern.Pattern;
+import com.sk89q.worldedit.math.BlockVector3;
 import com.sk89q.worldedit.regions.CuboidRegion;
 import com.sk89q.worldedit.world.biome.BiomeType;
 import com.sk89q.worldedit.world.biome.BiomeTypes;
@@ -46,6 +47,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.server.level.ChunkLevel;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.NoiseColumn;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.BiomeResolver;
@@ -73,7 +75,7 @@ public class GenChunk extends ZeroedDelegateScopedQueueCoordinator {
     public String world;
     public int chunkX;
     public int chunkZ;
-    private LevelChunk chunkData = null;
+    private ChunkAccess chunkData = null;
 
     /**
      * @param minY minimum world Y, inclusive
@@ -85,7 +87,7 @@ public class GenChunk extends ZeroedDelegateScopedQueueCoordinator {
         this.biomes = FabricPlatform.SERVER.registryAccess().registry(Registries.BIOME).get().stream().toList().toArray(new Biome[0]);
     }
 
-    public @Nullable LevelChunk getChunkData() {
+    public @Nullable ChunkAccess getChunkData() {
         return this.chunkData;
     }
 
@@ -94,7 +96,7 @@ public class GenChunk extends ZeroedDelegateScopedQueueCoordinator {
      *
      * @param chunkData Bukkit ChunkData
      */
-    public void setChunkData(@NonNull LevelChunk chunkData) {
+    public void setChunkData(@NonNull ChunkAccess chunkData) {
         this.chunkData = chunkData;
     }
 
@@ -102,7 +104,7 @@ public class GenChunk extends ZeroedDelegateScopedQueueCoordinator {
         if (chunk == null) {
             ServerLevel worldObj = FabricUtil.getWorld(world);
             if (worldObj != null) {
-                this.chunk = worldObj.getChunk(chunkX, chunkZ);
+                this.chunk = new LevelChunk(worldObj, new ChunkPos(chunkX, chunkZ));
             }
         }
         return chunk;
@@ -190,7 +192,7 @@ public class GenChunk extends ZeroedDelegateScopedQueueCoordinator {
     }
 
     public void setBiome(int x, int y, int z, @NonNull Biome biome) {
-       getWorld().setBiome(x,y,z, FabricAdapter.adapt(biome));
+       getWorld().setBiome(BlockVector3.at(x,y,z), FabricAdapter.adapt(biome));
     }
 
     @Override
@@ -226,10 +228,10 @@ public class GenChunk extends ZeroedDelegateScopedQueueCoordinator {
     @Override
     public boolean setBlock(int x, int y, int z, @NonNull BaseBlock id) {
         if (this.result == null) {
-            this.chunkData.setBlockState(new BlockPos(x, y, z), FabricAdapter.adapt(id.toBlockState()), true);
+            this.chunkData.setBlockState(new BlockPos(x, y, z), FabricAdapter.adapt(id.toImmutableState()), true);
             return true;
         }
-        this.chunkData.setBlockState(new BlockPos(x, y, z), FabricAdapter.adapt(id.toBlockState()), true);
+        this.chunkData.setBlockState(new BlockPos(x, y, z), FabricAdapter.adapt(id.toImmutableState()), true);
         this.storeCache(x, y, z, id.toImmutableState());
         return true;
     }
@@ -259,17 +261,17 @@ public class GenChunk extends ZeroedDelegateScopedQueueCoordinator {
     @Override
     public com.sk89q.worldedit.world.@NonNull World getWorld() {
         return chunk == null ? FabricAdapter.adapt(FabricUtil.getWorld(world)) :
-                FabricAdapter.adapt(chunk.getLevel().getServer().getLevel(chunk.getLevel().dimension()));
+                FabricAdapter.adapt(chunk.getLevel());
     }
 
     @Override
     public @NonNull Location getMax() {
-        return Location.at(getWorld().getName(), 15 + (getX() << 4), super.getMax().getY(), 15 + (getZ() << 4));
+        return Location.at(world, 15 + (getX() << 4), super.getMax().getY(), 15 + (getZ() << 4));
     }
 
     @Override
     public @NonNull Location getMin() {
-        return Location.at(getWorld().getName(), getX() << 4, super.getMin().getY(), getZ() << 4);
+        return Location.at(world, getX() << 4, super.getMin().getY(), getZ() << 4);
     }
 
     public @NonNull GenChunk clone() {

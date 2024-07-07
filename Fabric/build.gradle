@@ -1,4 +1,4 @@
-import org.gradle.api.attributes.Attribute
+import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 
 plugins {
     id 'fabric-loom' version '1.6-SNAPSHOT'
@@ -21,10 +21,6 @@ repositories {
     maven {
         name = "Modrinth"
         url = "https://api.modrinth.com/maven"
-    }
-    maven {
-        name = "TslatEffectsLib (TEL) Maven Repo"
-        url = "https://dl.cloudsmith.io/public/tslat/tel/maven/"
     }
     maven {
         name = "sonatype-oss-snapshots1"
@@ -53,6 +49,57 @@ configurations {
         }
     }
 }
+shadowJar {
+    configurations = [project.configurations.shadow]
+    dependsOn(":plotsquared-core:shadowJar")
+    dependencies {
+        exclude(dependency("org.checkerframework:"))
+    }
+
+/*
+    relocate("net.kyori.option", "com.plotsquared.core.configuration.option")
+    relocate("net.kyori.adventure", "com.plotsquared.core.configuration.adventure")
+    relocate("net.kyori.examination", "com.plotsquared.core.configuration.examination")
+    relocate("io.papermc.lib", "com.plotsquared.bukkit.paperlib")
+    relocate("org.bstats", "com.plotsquared.metrics")
+    relocate("org.enginehub", "com.plotsquared.squirrelid")
+    relocate("org.khelekore.prtree", "com.plotsquared.prtree")
+    relocate("com.google.inject", "com.plotsquared.google")
+    relocate("org.aopalliance", "com.plotsquared.core.aopalliance")
+    relocate("cloud.commandframework.services", "com.plotsquared.core.services")
+    relocate("io.leangen.geantyref", "com.plotsquared.core.geantyref")
+    relocate("com.intellectualsites.arkitektonika", "com.plotsquared.core.arkitektonika")
+    relocate("com.intellectualsites.http", "com.plotsquared.core.http")
+    relocate("com.intellectualsites.paster", "com.plotsquared.core.paster")
+    relocate("org.incendo.serverlib", "com.plotsquared.bukkit.serverlib")
+    relocate("org.jetbrains", "com.plotsquared.core.annotations")
+    relocate("org.intellij.lang", "com.plotsquared.core.intellij.annotations")
+    relocate("javax.annotation", "com.plotsquared.core.annotation")
+    relocate("com.github.spotbugs", "com.plotsquared.core.spotbugs")
+    relocate("javax.inject", "com.plotsquared.core.annotation.inject")
+    relocate("net.jcip", "com.plotsquared.core.annotations.jcip")
+    relocate("edu.umd.cs.findbugs", "com.plotsquared.core.annotations.findbugs")
+    relocate("com.intellectualsites.annotations", "com.plotsquared.core.annotations.informative")
+*/
+    exclude("META-INF")
+    minimize()
+
+
+    mergeServiceFiles()
+}
+
+remapJar{
+    var shadow = tasks.named("shadowJar", ShadowJar)
+    dependsOn(shadow)
+    mustRunAfter(shadow)
+    inputFile.set(shadowJar.archivePath)
+    addNestedDependencies.set(true)
+}
+
+assemble {
+    dependsOn(remapJar)
+}
+
 
 dependencies {
     // To change the versions see the gradle.properties file
@@ -60,21 +107,34 @@ dependencies {
     mappings loom.officialMojangMappings()
     modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
     api(projects.plotsquaredCore)
-    modImplementation include("net.kyori:adventure-platform-fabric:5.8.0")
-    modImplementation include("net.kyori:adventure-api:4.17.0")
-    modImplementation include("net.kyori:adventure-text-minimessage:4.17.0")
-    modImplementation include("net.kyori:adventure-text-serializer-legacy:4.17.0")
-    modImplementation include("dev.notmyfault.serverlib:ServerLib:2.3.6")
-    modImplementation("curse.maven:worldedit-225608:4586218")
-    //modImplementation("name:FastAsyncWorldEdit-Fabric-2.6.0-SNAPSHOT")
+    shadow(projects.plotsquaredCore)
+    modImplementation (include("net.kyori:adventure-platform-fabric:5.8.0"))
+    //shadow("net.kyori:adventure-platform-fabric:5.8.0")
+    modImplementation (include("net.kyori:adventure-api:4.17.0"))
+   // shadow("net.kyori:adventure-api:4.17.0")
+    modImplementation (include("net.kyori:adventure-text-minimessage:4.17.0"))
+    //shadow("net.kyori:adventure-text-minimessage:4.17.0")
+    modImplementation (include("net.kyori:adventure-text-serializer-legacy:4.17.0"))
+    //shadow("net.kyori:adventure-text-serializer-legacy:4.17.0")
+    modImplementation (include("dev.notmyfault.serverlib:ServerLib:2.3.6"))
+    //modImplementation(libs.worldeditCore)
+   // modImplementation("curse.maven:worldedit-225608:4586218")
+    modCompileOnly("name:FastAsyncWorldEdit-Fabric-2.6.0-SNAPSHOT")
     modImplementation("xyz.nucleoid:stimuli:0.4.8+1.20.1")
-    modImplementation "curse.maven:tslateffectslib-700382:5271397"
+    //shadow("xyz.nucleoid:stimuli:0.4.8+1.20.1")
     modCompileOnlyApi("net.luckperms:api:5.4")
-    modCompileOnlyApi("io.github.miniplaceholders:miniplaceholders-api:2.2.3")
-    modCompileOnlyApi("name:Multiworld-Fabric-1.20.1")
+    modImplementation("io.github.miniplaceholders:miniplaceholders-api:2.2.3")
+    modCompileOnly("name:Multiworld-Fabric-1.20.1")
     modCompileOnlyApi("xyz.nucleoid:fantasy:0.4.11+1.20-rc1")
+    modCompileOnlyApi("maven.modrinth:rCEje2Lt:bTyKGlcm")
+    implementation(include(libs.squirrelid.get())) {transitive = false}
+    implementation(include(libs.arkitektonika.get()))
+    implementation(include(libs.paster.get()))
+    implementation(include(libs.informativeAnnotations.get()))
+    modImplementation(include("org.apache.commons:commons-compress:1.21"))
     // Fabric API. This is technically optional, but you probably want it anyway.
     modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+    include(implementation(annotationProcessor("io.github.llamalad7:mixinextras-fabric:0.4.0-beta.2")))
 }
 
 processResources {
@@ -110,28 +170,11 @@ java {
     // Loom will automatically attach sourcesJar to a RemapSourcesJar task and to the "build" task
     // if it is present.
     // If you remove this line, sources will not be generated.
-    withSourcesJar()
+    //withSourcesJar()
 }
 
 jar {
     from("LICENSE") {
         rename { "${it}_${project.archivesBaseName}" }
-    }
-}
-
-// configure the maven publication
-publishing {
-    publications {
-        mavenJava(MavenPublication) {
-            from components.java
-        }
-    }
-
-    // See https://docs.gradle.org/current/userguide/publishing_maven.html for information on how to set up publishing.
-    repositories {
-        // Add repositories to publish to here.
-        // Notice: This block does NOT have the same function as the block in the top level.
-        // The repositories here will be used for publishing your artifact, not for
-        // retrieving dependencies.
     }
 }

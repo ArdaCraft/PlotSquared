@@ -8,28 +8,26 @@ import com.plotsquared.core.queue.subscriber.ProgressSubscriber;
 import com.plotsquared.core.util.task.PlotSquaredTask;
 import com.plotsquared.core.util.task.TaskManager;
 import com.plotsquared.core.util.task.TaskTime;
+import com.plotsquared.fabric.FabricPlatform;
 import com.plotsquared.fabric.util.FabricUtil;
 import com.sk89q.worldedit.math.BlockVector2;
 import com.sk89q.worldedit.world.World;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.server.level.Ticket;
 import net.minecraft.server.level.TicketType;
-import net.minecraft.util.Unit;
-import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.ChunkStatus;
-import net.minecraft.world.level.chunk.LevelChunk;
 import org.checkerframework.checker.nullness.qual.NonNull;
 
 import java.util.Collection;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
-public class FabricChunkCoordinator extends ChunkCoordinator {
+public final class FabricChunkCoordinator extends ChunkCoordinator {
 
     private final List<ProgressSubscriber> progressSubscribers = new LinkedList<>();
 
@@ -74,7 +72,7 @@ public class FabricChunkCoordinator extends ChunkCoordinator {
         this.whenDone = whenDone;
         this.throwableConsumer = throwableConsumer;
         this.unloadAfter = unloadAfter;
-        this.serverLevel = FabricUtil.getWorld(world.getName());
+        this.serverLevel = FabricUtil.getWorld(world.getNameUnsafe());
         this.progressSubscribers.addAll(progressSubscribers);
         this.forceSync = forceSync;
     }
@@ -166,17 +164,15 @@ public class FabricChunkCoordinator extends ChunkCoordinator {
             // Adjust batch size based on the amount of processed chunks per tick
             this.batchSize = processedChunks;
         }
-
         final int expected = this.expectedSize.addAndGet(-processedChunks);
-
         if (expected <= 0) {
             finish();
         } else {
             if (this.availableChunks.size() < processedChunks) {
-                final double progress = ((double) totalSize - (double) expected) / (double) totalSize;
+                /*final double progress = ((double) totalSize - (double) expected) / (double) totalSize;
                 for (final ProgressSubscriber subscriber : this.progressSubscribers) {
                     subscriber.notifyProgress(this, progress);
-                }
+                }*/
                 this.requestBatch();
             }
         }
@@ -190,7 +186,6 @@ public class FabricChunkCoordinator extends ChunkCoordinator {
         for (int i = 0; i < this.batchSize && (chunk = this.requestedChunks.poll()) != null; i++) {
             // This required PaperLib to be bumped to version 1.0.4 to mark the request as urgent
             loadingChunks.incrementAndGet();
-
             serverLevel.getChunkSource().getChunkFuture(chunk.getX(), chunk.getZ(), ChunkStatus.FULL, true)
                     .whenComplete((chunkObject, throwable) -> {
                         loadingChunks.decrementAndGet();
@@ -198,7 +193,7 @@ public class FabricChunkCoordinator extends ChunkCoordinator {
                             throwable.printStackTrace();
                             // We want one less because this couldn't be processed
                             this.expectedSize.decrementAndGet();
-                        } else if (PlotSquared.get().isMainThread(Thread.currentThread())) {
+                        } else if (PlotSquared.get().isMainThread(FabricPlatform.SERVER.getRunningThread())) {
                             this.processChunk(chunkObject.left().get());
                         } else {
                             TaskManager.runTask(() -> this.processChunk(chunkObject.left().get()));

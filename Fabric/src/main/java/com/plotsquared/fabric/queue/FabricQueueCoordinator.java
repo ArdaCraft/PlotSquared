@@ -8,11 +8,14 @@ import com.plotsquared.core.queue.BasicQueueCoordinator;
 import com.plotsquared.core.queue.ChunkCoordinator;
 import com.plotsquared.core.queue.LocalChunk;
 import com.plotsquared.core.util.ChunkUtil;
+import com.plotsquared.fabric.util.FabricBlockUtil;
 import com.plotsquared.fabric.util.FabricUtil;
 import com.sk89q.jnbt.CompoundTag;
 import com.sk89q.worldedit.WorldEditException;
 import com.sk89q.worldedit.extent.clipboard.BlockArrayClipboard;
 import com.sk89q.worldedit.extent.clipboard.Clipboard;
+import com.sk89q.worldedit.fabric.FabricAdapter;
+import com.sk89q.worldedit.fabric.FabricWorld;
 import com.sk89q.worldedit.math.BlockVector2;
 import com.sk89q.worldedit.math.BlockVector3;
 import com.sk89q.worldedit.regions.CuboidRegion;
@@ -25,7 +28,10 @@ import com.sk89q.worldedit.world.block.BaseBlock;
 import com.sk89q.worldedit.world.block.BlockState;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.Container;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.chunk.LevelChunk;
 import org.checkerframework.checker.nullness.qual.NonNull;
 
 import java.util.ArrayList;
@@ -179,8 +185,10 @@ public class FabricQueueCoordinator extends BasicQueueCoordinator {
                             BaseBlock block = getWorld().getBlock(blockVector3).toBaseBlock(tag);
                             getWorld().setBlock(blockVector3, block, getSideEffectSet(SideEffectState.NONE));
                         } catch (WorldEditException ignored) {
-                            StateWrapper sw = new StateWrapper(tag);
-                            sw.restoreTag(getWorld().getName(), blockVector3.getX(), blockVector3.getY(), blockVector3.getZ());
+                            ignored.printStackTrace();
+                            /* TODO RESTORE ENTITY FROM TAG USING FABRIC */
+                            /*StateWrapper sw = new StateWrapper(tag);
+                            sw.restoreTag(getWorld().getName(), blockVector3.getX(), blockVector3.getY(), blockVector3.getZ());*/
                         }
                     });
                 }
@@ -242,39 +250,42 @@ public class FabricQueueCoordinator extends BasicQueueCoordinator {
             getWorld().setBlock(loc, block, sideEffectSet);
         } catch (WorldEditException ignored) {
             // Fallback to not so nice method
-            BlockData blockData = BukkitAdapter.adapt(block);
-            Block existing;
+            net.minecraft.world.level.block.state.BlockState blockData = FabricAdapter.adapt(block.toImmutableState());
+            net.minecraft.world.level.block.state.BlockState existing;
             // Assume a chunk object has been given only when it should have been.
-            if (getChunkObject() instanceof Chunk chunkObject) {
-                existing = chunkObject.getBlock(x & 15, y, z & 15);
+            if (getChunkObject() instanceof LevelChunk chunkObject) {
+                existing = chunkObject.getBlockState(new BlockPos(x & 15, y, z & 15));
             } else {
-                existing = getBukkitWorld().getBlockAt(x, y, z);
+                existing = getFabricWorld().getBlockState(new BlockPos(x, y, z));
             }
-            final BlockState existingBaseBlock = BukkitAdapter.adapt(existing.getBlockData());
-            if (BukkitBlockUtil.get(existing).equals(existingBaseBlock) && existing.getBlockData().matches(blockData)) {
+            final BlockState existingBaseBlock = FabricAdapter.adapt(existing);
+            if (FabricBlockUtil.get(existing.getBlock()).equals(existingBaseBlock) && existing.equals(blockData)) {
                 return;
             }
 
-            if (existing.getState() instanceof Container) {
-                ((Container) existing.getState()).getInventory().clear();
+            if (existing.getBlock() instanceof Container) {
+                ((Container) existing).clearContent();
             }
 
-            existing.setType(BukkitAdapter.adapt(block.getBlockType()), false);
-            existing.setBlockData(blockData, false);
+            getFabricWorld().setBlock(new BlockPos(x, y, z), blockData,2);
+          //  existing.setType(FabricAdapter.adapt(block.getBlockType()), false);
+           // existing.setBlockData(blockData, false);
             if (block.hasNbtData()) {
                 CompoundTag tag = block.getNbtData();
+                /*
+                getFabricWorld().to;
                 StateWrapper sw = new StateWrapper(tag);
 
-                sw.restoreTag(existing);
+                sw.restoreTag(existing);*/
             }
         }
     }
 
     private ServerLevel getFabricWorld() {
-        if (bukkitWorld == null) {
-            bukkitWorld = FabricUtil.getWorld(getWorld().getName());
+        if (fabricWorld == null) {
+            fabricWorld = FabricUtil.getWorld(getWorld().getName());
         }
-        return bukkitWorld;
+        return fabricWorld;
     }
 
     private boolean isEdge(int layer, int x, int y, int z, BlockVector2 blockVector2, LocalChunk localChunk) {

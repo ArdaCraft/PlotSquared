@@ -24,45 +24,41 @@ import com.plotsquared.core.util.SetupUtils;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.chunk.ChunkGenerator;
 
-
-import java.lang.reflect.Field;
-import java.util.ArrayList;
-
 public class SetGenFabric {
 
-    public static void setGenerator(ServerLevel world) throws Exception {
+    public static void setGenerator(ServerLevel world) {
         PlotSquared.platform().setupUtils().updateGenerators(false);
-        PlotSquared.get().removePlotAreas(world.serverLevelData.getLevelName());
-        ChunkGenerator gen = world.getChunkSource().getGenerator();
+        PlotSquared.get().removePlotAreas(world.dimension().location().getPath());
+        ChunkGenerator gen = world.getChunkSource().chunkMap.generator;
+        //FabricPlatform.SERVER.registryAccess().registry(Registries.CHUNK_GENERATOR).get().get().decode().get().left().get()
+        // .getFirst();
         String name = gen.getClass().getCanonicalName();
         boolean set = false;
+
         for (GeneratorWrapper<?> wrapper : SetupUtils.generators.values()) {
             ChunkGenerator newGen = (ChunkGenerator) wrapper.getPlatformGenerator();
             if (newGen == null) {
                 newGen = (ChunkGenerator) wrapper;
             }
-            if (newGen.getClass().getCanonicalName().equals(name)) {
-                // set generator
-                Field generator = world.getClass().getDeclaredField("generator");
-                Field populators = world.getClass().getDeclaredField("populators");
-                generator.setAccessible(true);
-                populators.setAccessible(true);
-                // Set populators (just in case)
-                populators.set(world, new ArrayList<>());
-                // Set generator
-                generator.set(world, newGen);
-                populators.set(world, newGen.getDefaultPopulators(world));
-                // end
-                set = true;
-                break;
-            }
-        }
+            world.getChunkSource().chunkMap.generator = newGen;
+            // if (newGen.getClass().equals(gen.getClass())) {
+            // Set generator
+            //if (newGen instanceof FabricPlotGenerator fabricPlotGenerator) {
+            //     fabricPlotGenerator.checkLoaded(world);
+            //   }
+            // end
+            set = true;
+            break;
+            //  }
+        }/*
         if (!set) {
             world.getPopulators()
-                    .removeIf(blockPopulator -> blockPopulator instanceof BukkitAugmentedGenerator);
-        }
-        PlotSquared.get()
-                .loadWorld(world.getName(), PlotSquared.platform().getGenerator(world.getName(), null));
+                    .removeIf(blockPopulator -> blockPopulator instanceof FabricAugmentedGenerator);
+        }*/
+        PlotSquared.get().loadWorld(
+                world.dimension().location().getPath(),
+                PlotSquared.platform().getGenerator(world.dimension().location().getPath(), null)
+        );
     }
 
 }

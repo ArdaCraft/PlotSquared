@@ -4,49 +4,51 @@ import com.mojang.serialization.Codec;
 import com.plotsquared.core.PlotSquared;
 import com.plotsquared.core.generator.ClassicPlotWorld;
 import com.plotsquared.core.generator.GeneratorWrapper;
-import com.plotsquared.core.generator.HybridPlotWorld;
 import com.plotsquared.core.generator.IndependentPlotGenerator;
-import com.plotsquared.core.generator.SingleWorldGenerator;
 import com.plotsquared.core.location.ChunkWrapper;
-import com.plotsquared.core.location.Location;
 import com.plotsquared.core.location.UncheckedWorldLocation;
 import com.plotsquared.core.plot.PlotArea;
 import com.plotsquared.core.plot.world.PlotAreaManager;
-import com.plotsquared.core.plot.world.SinglePlotArea;
 import com.plotsquared.core.queue.ZeroedDelegateScopedQueueCoordinator;
 import com.plotsquared.core.util.ChunkManager;
 import com.plotsquared.fabric.FabricPlatform;
 import com.plotsquared.fabric.queue.GenChunk;
-import com.plotsquared.fabric.queue.LimitedRegionWrapperQueue;
 import com.plotsquared.fabric.util.FabricUtil;
 import com.sk89q.worldedit.math.BlockVector2;
 import com.sk89q.worldedit.math.BlockVector3;
-import com.sk89q.worldedit.regions.CuboidRegion;
-import com.sk89q.worldedit.world.biome.BiomeTypes;
-import com.sk89q.worldedit.world.biome.Biomes;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.WorldGenRegion;
-import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.NoiseColumn;
 import net.minecraft.world.level.StructureManager;
+import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.biome.BiomeManager;
 import net.minecraft.world.level.biome.BiomeSource;
+import net.minecraft.world.level.biome.BiomeSources;
+import net.minecraft.world.level.biome.MultiNoiseBiomeSource;
+import net.minecraft.world.level.biome.MultiNoiseBiomeSourceParameterList;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.ChunkGenerator;
-import net.minecraft.world.level.chunk.EmptyLevelChunk;
-import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.chunk.ChunkGeneratorStructureState;
+import net.minecraft.world.level.levelgen.FlatLevelSource;
 import net.minecraft.world.level.levelgen.GenerationStep;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.RandomState;
 import net.minecraft.world.level.levelgen.blending.Blender;
+import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplateManager;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.checkerframework.checker.nullness.qual.NonNull;
+import org.jetbrains.annotations.NotNull;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
-import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
@@ -58,7 +60,8 @@ public class FabricPlotGenerator extends ChunkGenerator implements GeneratorWrap
     private final ChunkGenerator platformGenerator;
     private final boolean full;
     private final String levelName;
-    private final BiomeSource biomeSource;
+
+    private List<BlockPopulator> populators;
     private final BlockStatePopulator blockStatePopulator;
     private boolean loaded = false;
 
@@ -78,7 +81,6 @@ public class FabricPlotGenerator extends ChunkGenerator implements GeneratorWrap
         this.platformGenerator = this;
         this.blockStatePopulator = new BlockStatePopulator(this.plotGenerator);
         this.full = true;
-        this.biomeSource = FabricPlatform.SERVER.overworld().getChunkSource().getGenerator().getBiomeSource();
     }
 
     public FabricPlotGenerator(
@@ -96,7 +98,6 @@ public class FabricPlotGenerator extends ChunkGenerator implements GeneratorWrap
         this.platformGenerator = cg;
         this.plotGenerator = new DelegatePlotGenerator(cg, world);
         this.blockStatePopulator = new BlockStatePopulator(this.plotGenerator);
-        this.biomeSource = cg.getBiomeSource();
     }
 
 
@@ -147,7 +148,6 @@ public class FabricPlotGenerator extends ChunkGenerator implements GeneratorWrap
             final RandomState randomState,
             final ChunkAccess chunkAccess
     ) {
-
     }
 
     @Override
@@ -161,54 +161,35 @@ public class FabricPlotGenerator extends ChunkGenerator implements GeneratorWrap
     }
 
     @Override
-    public CompletableFuture<ChunkAccess> fillFromNoise(
+    public @NotNull CompletableFuture<ChunkAccess> fillFromNoise(
             final Executor executor,
             final Blender blender,
             final RandomState randomState,
             final StructureManager structureManager,
             final ChunkAccess chunkAccess
     ) {
-        return CompletableFuture.completedFuture(chunkAccess);
-    }
-
-    public @NonNull LevelChunk generateChunkData(
-            @NonNull ServerLevel world, @NonNull Random random, int x, int z
-    ) {
-        int minY = world.getMinBuildHeight();
-        int maxY = world.getMaxBuildHeight();
+        if (this.platformGenerator != this) {
+            return this.platformGenerator.fillFromNoise(executor, blender, randomState, structureManager, chunkAccess);
+        }
+        int minY = chunkAccess.getMinBuildHeight();
+        int maxY = chunkAccess.getMaxBuildHeight();
         GenChunk result = new GenChunk(minY, maxY);
-        /*
-        if (this.getPlotGenerator() instanceof SingleWorldGenerator) {
-            if (result.getChunkData() != null) {
-                for (int chunkX = 0; chunkX < 16; chunkX++) {
-                    for (int chunkZ = 0; chunkZ < 16; chunkZ++) {
-                        for (int y = minY; y < maxY; y++) {
-
-                        }
-                    }
-                }
-                return result.getChunkData();
-            }
-        }*/
         // Set the chunk location
-        result.setChunk(new ChunkWrapper(world.serverLevelData.getLevelName(), x, z));
+        result.setChunk(new ChunkWrapper(structureManager.structureCheck.dimension.location().getPath(), chunkAccess.getPos().x,
+                chunkAccess.getPos().z));
         // Set the result data
-        result.setChunkData(new LevelChunk(world, new ChunkPos(x, z)));
+        result.setChunkData(chunkAccess);
         result.result = null;
 
         // Catch any exceptions (as exceptions usually thrown)
         try {
-            // Fill the result data if necessary
-            if (this.platformGenerator != this) {
-                return this.generateChunkData(world, random, x, z);
-            } else {
-                generate(BlockVector2.at(x, z), world.serverLevelData.getLevelName(), result, true);
-            }
+            generate(BlockVector2.at(chunkAccess.getPos().x, chunkAccess.getPos().z),
+                    structureManager.structureCheck.dimension.location().getPath(), result,
+                    false);
         } catch (Throwable e) {
-            LOGGER.error("Error attempting to load world into PlotSquared.", e);
+            LOGGER.error("Error attempting to generate chunk.", e);
         }
-        // Return the result data
-        return result.getChunkData();
+        return CompletableFuture.completedFuture(chunkAccess);
     }
 
     private void generate(BlockVector2 loc, String world, ZeroedDelegateScopedQueueCoordinator result, boolean biomes) {
@@ -234,12 +215,12 @@ public class FabricPlotGenerator extends ChunkGenerator implements GeneratorWrap
 
     @Override
     public int getSeaLevel() {
-        return 0;
+        return 63;
     }
 
     @Override
     public int getMinY() {
-        return 0;
+        return -64;
     }
 
     @Override
@@ -250,12 +231,13 @@ public class FabricPlotGenerator extends ChunkGenerator implements GeneratorWrap
             final LevelHeightAccessor levelHeightAccessor,
             final RandomState randomState
     ) {
-        PlotArea area = getPlotArea(levelName, i, j);
+
+        PlotArea area = getPlotArea(this.levelName, i, j);
         if (area instanceof ClassicPlotWorld cpw) {
             // Default to plot height being the heighest point before decoration (i.e. roads, walls etc.)
             return cpw.PLOT_HEIGHT;
         }
-        throw new UnsupportedOperationException("getBaseHeight Not Implemented");
+        return 62;
     }
 
     @Override
@@ -265,7 +247,11 @@ public class FabricPlotGenerator extends ChunkGenerator implements GeneratorWrap
             final LevelHeightAccessor levelHeightAccessor,
             final RandomState randomState
     ) {
-        return null;
+
+        //return a noise column of air
+        BlockState[] airColumn = new BlockState[256];
+        Arrays.fill(airColumn, Blocks.AIR.defaultBlockState());
+        return new NoiseColumn(0, airColumn);
     }
 
     @Override
@@ -273,10 +259,13 @@ public class FabricPlotGenerator extends ChunkGenerator implements GeneratorWrap
 
     }
 
+
     private synchronized PlotArea getPlotArea(String name, int chunkX, int chunkZ) {
         // Load if improperly loaded
+
         if (!this.loaded) {
             PlotSquared.get().loadWorld(name, this);
+            //this.checkLoaded(FabricUtil.getWorld(name));
             // Do not set loaded to true as we want to ensure spawn limits are set when "loading" is actually able to be
             // completed properly.
         }
@@ -298,5 +287,55 @@ public class FabricPlotGenerator extends ChunkGenerator implements GeneratorWrap
         this.lastChunkZ = chunkZ;
         return this.lastPlotArea = area;
     }
+
+    public synchronized void checkLoaded(@NonNull ServerLevel world) {
+        // Do not attempt to load configurations until WorldEdit has a platform ready.
+        //if (!PlotSquared.get().isWeInitialised()) {
+          //  return;
+       // }
+        if (!this.loaded) {
+            String name = world.dimension().location().getPath();
+            PlotSquared.get().loadWorld(name, this);
+            final Set<PlotArea> areas = this.plotAreaManager.getPlotAreasSet(name);
+            if (!areas.isEmpty()) {
+                PlotArea area = areas.iterator().next();
+                if (!area.isMobSpawning()) {
+                    if (!area.isSpawnEggs()) {
+                        world.setSpawnSettings(false, false);
+                    }
+                } else {
+                    world.setSpawnSettings(true, true);
+                }
+            }
+            this.loaded = true;
+        }
+    }
+
+    @Override
+    public void createStructures(
+            final RegistryAccess registryAccess,
+            final ChunkGeneratorStructureState chunkGeneratorStructureState,
+            final StructureManager structureManager,
+            final ChunkAccess chunkAccess,
+            final StructureTemplateManager structureTemplateManager
+    ) {
+    }
+
+    @Override
+    public void createReferences(
+            final WorldGenLevel worldGenLevel,
+            final StructureManager structureManager,
+            final ChunkAccess chunkAccess
+    ) {
+    }
+
+    @Override
+    public void applyBiomeDecoration(
+            final WorldGenLevel worldGenLevel,
+            final ChunkAccess chunkAccess,
+            final StructureManager structureManager
+    ) {
+    }
+
 
 }

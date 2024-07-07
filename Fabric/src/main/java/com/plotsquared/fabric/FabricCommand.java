@@ -27,6 +27,7 @@ import com.plotsquared.fabric.util.FabricUtil;
 import net.minecraft.commands.CommandSourceStack;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -35,10 +36,11 @@ import java.util.Locale;
 public class FabricCommand {
 
 
-    public boolean onCommand(
+    public static boolean onCommand(
             CommandSourceStack commandSender, Command<?> command, String commandLabel,
             String[] args
     ) {
+
         if (commandSender.isPlayer()) {
             return MainCommand.onCommand(FabricUtil.adapt(commandSender.getPlayer()), args);
         }
@@ -48,7 +50,7 @@ public class FabricCommand {
         return false;
     }
 
-    public List<String> onTabComplete(
+    public static List<String> onTabComplete(
             CommandSourceStack commandSender, Command command, String label,
             String[] args
     ) {
@@ -56,16 +58,13 @@ public class FabricCommand {
             return null;
         }
         PlotPlayer<?> player = FabricUtil.adapt(commandSender.getPlayer());
-        if (args.length == 0) {
-            return Collections.singletonList("plots");
-        }
         if (!Settings.Enabled_Components.TAB_COMPLETED_ALIASES.contains(label.toLowerCase(Locale.ENGLISH))) {
             return List.of();
         }
         Collection<com.plotsquared.core.command.Command> objects =
-                MainCommand.getInstance().tab(player, args, label.endsWith(" "));
+                MainCommand.getInstance().tab(player, args, true);
         if (objects == null) {
-            return null;
+            return List.of();
         }
         List<String> result = new ArrayList<>();
         for (com.plotsquared.core.command.Command o : objects) {

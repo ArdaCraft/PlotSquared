@@ -18,23 +18,19 @@
  */
 package com.plotsquared.fabric.listener;
 
-import com.plotsquared.bukkit.util.BukkitUtil;
+
 import com.plotsquared.core.location.Location;
 import com.plotsquared.core.plot.Plot;
 import com.plotsquared.core.plot.flag.FlagContainer;
 import com.plotsquared.core.plot.flag.implementations.BeaconEffectsFlag;
-import org.bukkit.entity.Entity;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.Listener;
-import org.bukkit.event.entity.EntityPotionEffectEvent;
 import org.checkerframework.checker.nullness.qual.NonNull;
 
 /**
  * Fallback listener for paper events on spigot
  */
-public class SpigotListener implements Listener {
+public class SpigotListener {
 
-    @EventHandler(ignoreCancelled = true)
+   /* @EventHandler(ignoreCancelled = true)
     public void onEffect(@NonNull EntityPotionEffectEvent event) {
         if (event.getCause() != EntityPotionEffectEvent.Cause.BEACON) {
             return;
@@ -52,6 +48,5 @@ public class SpigotListener implements Listener {
         if (effectsEnabled != null && !effectsEnabled.getValue()) {
             event.setCancelled(true);
         }
-    }
-
+    }*/
 }

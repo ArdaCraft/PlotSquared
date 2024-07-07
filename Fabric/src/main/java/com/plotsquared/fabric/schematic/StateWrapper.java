@@ -18,10 +18,7 @@
  */
 package com.plotsquared.fabric.schematic;
 
-import com.destroystokyo.paper.profile.PlayerProfile;
-import com.destroystokyo.paper.profile.ProfileProperty;
 import com.google.common.base.Preconditions;
-import com.plotsquared.bukkit.util.BukkitUtil;
 import com.plotsquared.fabric.util.FabricUtil;
 import com.sk89q.jnbt.ByteTag;
 import com.sk89q.jnbt.CompoundTag;
@@ -30,34 +27,16 @@ import com.sk89q.jnbt.ShortTag;
 import com.sk89q.jnbt.StringTag;
 import com.sk89q.jnbt.Tag;
 import com.sk89q.worldedit.blocks.BaseItemStack;
-import com.sk89q.worldedit.bukkit.BukkitAdapter;
+import com.sk89q.worldedit.fabric.FabricAdapter;
 import com.sk89q.worldedit.world.item.ItemType;
-import io.papermc.lib.PaperLib;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.Container;
-import net.minecraft.world.entity.vehicle.ContainerEntity;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.block.BeaconBlock;
-import net.minecraft.world.level.block.ChestBlock;
-import net.minecraft.world.level.block.FurnaceBlock;
+import net.minecraft.world.level.block.SignBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
-import org.bukkit.DyeColor;
-import org.bukkit.World;
-import org.bukkit.block.Banner;
-import org.bukkit.block.Block;
-import org.bukkit.block.Container;
-import org.bukkit.block.Sign;
-import org.bukkit.block.Skull;
-import org.bukkit.block.banner.Pattern;
-import org.bukkit.block.banner.PatternType;
-import org.bukkit.enchantments.Enchantment;
-import org.bukkit.inventory.Inventory;
-import org.bukkit.inventory.ItemStack;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import org.jetbrains.annotations.NotNull;
 
@@ -195,43 +174,29 @@ public class StateWrapper {
 
         return new String(b);
     }
+/*
 
-    /**
-     * Restore the TileEntity data to the given world at the given coordinates.
-     *
-     * @param worldName World name
-     * @param x         x position
-     * @param y         y position
-     * @param z         z position
-     * @return true if successful
-     */
+
     public boolean restoreTag(String worldName, int x, int y, int z) {
         ServerLevel world = FabricUtil.getWorld(worldName);
         if (world == null) {
             return false;
         }
-        return restoreTag(world.getBlockState(new BlockPos(x, y, z)));
+        return restoreTag(world, world.getBlockState(new BlockPos(x, y, z)), new BlockPos(x, y, z));
     }
 
-    /**
-     * Restore the TileEntity data to the given block
-     *
-     * @param block Block to restore to
-     * @return true if successful
-     */
     @SuppressWarnings("deprecation") // #setLine is needed for Spigot compatibility
-    public boolean restoreTag(@NonNull BlockState block) {
+    public boolean restoreTag(ServerLevel serverLevel, @NonNull BlockState block, BlockPos blockPos) {
         if (this.tag == null) {
             return false;
         }
         BlockState state = block;
         switch (getId()) {
             case "chest", "beacon", "brewingstand", "dispenser", "dropper", "furnace", "hopper", "shulkerbox" -> {
-                if (!(state.getBlock() instanceof FurnaceBlock)) {
+                if (!((serverLevel.getBlockEntity(blockPos)) instanceof Container container)) {
                     return false;
                 }
                 List<Tag> itemsTag = this.tag.getListTag("Items").getValue();
-                Inventory inv = container.getSnapshotInventory();
                 for (Tag itemTag : itemsTag) {
                     CompoundTag itemComp = (CompoundTag) itemTag;
                     ItemType type = ItemType.REGISTRY.get(itemComp.getString("id").toLowerCase());
@@ -242,14 +207,14 @@ public class StateWrapper {
                     int slot = itemComp.getByte("Slot");
                     CompoundTag tag = (CompoundTag) itemComp.getValue().get("tag");
                     BaseItemStack baseItemStack = new BaseItemStack(type, tag, count);
-                    ItemStack itemStack = BukkitAdapter.adapt(baseItemStack);
-                    inv.setItem(slot, itemStack);
+                    ItemStack itemStack = FabricAdapter.adapt(baseItemStack);
+                    container.setItem(slot, itemStack);
                 }
                 container.update(true, false);
                 return true;
             }
             case "sign" -> {
-                if (state instanceof Sign sign) {
+                if (state.getBlock() instanceof SignBlock sign) {
                     sign.setLine(0, jsonToColourCode(tag.getString("Text1")));
                     sign.setLine(1, jsonToColourCode(tag.getString("Text2")));
                     sign.setLine(2, jsonToColourCode(tag.getString("Text3")));
@@ -371,5 +336,5 @@ public class StateWrapper {
         }
         return data;
     }
-
+*/
 }

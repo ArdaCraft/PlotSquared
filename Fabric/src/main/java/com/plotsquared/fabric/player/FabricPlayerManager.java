@@ -19,7 +19,6 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 import java.util.UUID;
 
 @Singleton
-
 public class FabricPlayerManager extends PlayerManager<FabricPlayer, ServerPlayer> {
 
     private final PlotAreaManager plotAreaManager;

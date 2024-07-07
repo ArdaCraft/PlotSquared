@@ -1,7 +1,7 @@
 package com.plotsquared.fabric.util;
 
 import com.google.inject.Inject;
-import com.mojang.serialization.JsonOps;
+import com.google.inject.Singleton;
 import com.plotsquared.core.PlotSquared;
 import com.plotsquared.core.configuration.ConfigurationNode;
 import com.plotsquared.core.configuration.ConfigurationSection;
@@ -17,22 +17,9 @@ import com.plotsquared.core.util.SetupUtils;
 import com.plotsquared.core.util.task.TaskManager;
 import com.plotsquared.fabric.FabricPlatform;
 import com.plotsquared.fabric.generator.FabricPlotGenerator;
-import net.fabricmc.fabric.api.datagen.v1.provider.FabricCodecDataProvider;
-import net.fabricmc.fabric.api.event.registry.DynamicRegistries;
-import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
-import net.fabricmc.fabric.mixin.resource.conditions.DataPackContentsMixin;
-import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Registry;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.ResourceKey;
-import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.level.ChunkHolder;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.server.packs.PackType;
-import net.minecraft.world.level.DataPackConfig;
 import net.minecraft.world.level.chunk.ChunkGenerator;
 import org.checkerframework.checker.nullness.qual.NonNull;
 
@@ -42,6 +29,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
+@Singleton
 public class FabricSetupUtils extends SetupUtils {
 
     private final PlotAreaManager plotAreaManager;
@@ -66,27 +54,23 @@ public class FabricSetupUtils extends SetupUtils {
             return;
         }
         String testWorld = "CheckingPlotSquaredGenerator";
-        BuiltInRegistries.CHUNK_GENERATOR.keySet().forEach(resourceLocation -> {
-            try {
-                ChunkGenerator generator = BuiltInRegistries.CHUNK_GENERATOR.get(resourceLocation).
-                        plugin.getDefaultWorldGenerator(testWorld, "");
-                if (generator != null) {
-                    PlotSquared.get().removePlotAreas(testWorld);
-                    String name = plugin.getDescription().getName();
-                    GeneratorWrapper<?> wrapped;
-                    if (generator instanceof GeneratorWrapper<?>) {
-                        wrapped = (GeneratorWrapper<?>) generator;
-                    } else {
-                        wrapped = new BukkitPlotGenerator(testWorld, generator, this.plotAreaManager);
-                    }
-                    SetupUtils.generators.put(name, wrapped);
-                }
-            } catch (Throwable e) { // Recover from third party generator error
-                e.printStackTrace();
+        ChunkGenerator generator = FabricPlatform.PLATFORM.getDefaultWorldGenerator(testWorld, "");
+        if (generator != null) {
+            PlotSquared.get().removePlotAreas(testWorld);
+            String name = "PlotSquared";
+            GeneratorWrapper<?> wrapped;
+            if (generator instanceof GeneratorWrapper<?>) {
+                wrapped = (GeneratorWrapper<?>) generator;
+            } else {
+                wrapped = new FabricPlotGenerator(testWorld, generator, this.plotAreaManager);
             }
-            loaded = true;
-        });
-
+            SetupUtils.generators.put(name, wrapped);
+        }
+        //  }
+        //} catch (Throwable e) { // Recover from third party generator error
+        //    e.printStackTrace();
+        //}
+        loaded = true;
     }
 
     @Override
@@ -94,7 +78,7 @@ public class FabricSetupUtils extends SetupUtils {
         TaskManager.runTask(() -> {
             ServerLevel world = null;
             for (ServerLevel level : FabricPlatform.SERVER.getAllLevels()) {
-                if (level.serverLevelData.getLevelName().equalsIgnoreCase(worldName)) {
+                if (level.dimension().location().getPath().toString().equalsIgnoreCase(worldName)) {
                     world = level;
                 }
             }
@@ -104,7 +88,7 @@ public class FabricSetupUtils extends SetupUtils {
 
             BlockPos location = FabricPlatform.SERVER.overworld().getSharedSpawnPos();
             for (ServerPlayer player : world.players()) {
-                player.teleportTo(FabricPlatform.SERVER.overworld(), location.getX(), location.getY(), location.getZ(), 0f, 0f);
+                player.teleportTo(FabricPlatform.SERVER.overworld(), location.getX(), location.getY(), location.getZ(), 1f, 1f);
             }
             if (save) {
                 try {
@@ -236,7 +220,7 @@ public class FabricSetupUtils extends SetupUtils {
 
         ServerLevel level = null;
         for (ServerLevel findLevel : FabricPlatform.SERVER.getAllLevels()) {
-            if (findLevel.serverLevelData.getLevelName().equalsIgnoreCase(world)) {
+            if (findLevel.dimension().location().getPath().toString().equalsIgnoreCase(world)) {
                 level = findLevel;
             }
         }
@@ -256,7 +240,7 @@ public class FabricSetupUtils extends SetupUtils {
         }
         ServerLevel world = null;
         for (ServerLevel findLevel : FabricPlatform.SERVER.getAllLevels()) {
-            if (findLevel.serverLevelData.getLevelName().equalsIgnoreCase(plotArea.getWorldName())) {
+            if (findLevel.dimension().location().getPath().toString().equalsIgnoreCase(plotArea.getWorldName())) {
                 world = findLevel;
             }
         }

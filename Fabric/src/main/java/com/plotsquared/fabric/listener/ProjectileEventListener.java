@@ -19,9 +19,6 @@
 package com.plotsquared.fabric.listener;
 
 import com.google.inject.Inject;
-import com.plotsquared.bukkit.util.BukkitEntityUtil;
-import com.plotsquared.bukkit.util.BukkitUtil;
-import com.plotsquared.core.configuration.caption.TranslatableCaption;
 import com.plotsquared.core.location.Location;
 import com.plotsquared.core.permissions.Permission;
 import com.plotsquared.core.player.PlotPlayer;
@@ -32,46 +29,36 @@ import com.plotsquared.core.plot.flag.implementations.FishingFlag;
 import com.plotsquared.core.plot.flag.implementations.ProjectilesFlag;
 import com.plotsquared.core.plot.world.PlotAreaManager;
 import com.plotsquared.core.util.PlotFlagUtil;
-import net.kyori.adventure.text.minimessage.tag.Tag;
-import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
-import org.bukkit.entity.Entity;
-import org.bukkit.entity.EntityType;
-import org.bukkit.entity.LivingEntity;
-import org.bukkit.entity.Player;
-import org.bukkit.entity.Projectile;
-import org.bukkit.entity.ThrownPotion;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.EventPriority;
-import org.bukkit.event.Listener;
-import org.bukkit.event.entity.LingeringPotionSplashEvent;
-import org.bukkit.event.entity.PotionSplashEvent;
-import org.bukkit.event.entity.ProjectileHitEvent;
-import org.bukkit.event.entity.ProjectileLaunchEvent;
-import org.bukkit.projectiles.BlockProjectileSource;
-import org.bukkit.projectiles.ProjectileSource;
+import com.plotsquared.fabric.util.FabricUtil;
+import net.minecraft.core.GlobalPos;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.projectile.Projectile;
+import net.minecraft.world.entity.projectile.ThrownPotion;
+import net.minecraft.world.item.SplashPotionItem;
+import net.minecraft.world.phys.BlockHitResult;
 import org.checkerframework.checker.nullness.qual.NonNull;
+import xyz.nucleoid.stimuli.Stimuli;
+import xyz.nucleoid.stimuli.event.projectile.ProjectileHitEvent;
 
 @SuppressWarnings("unused")
-public class ProjectileEventListener implements Listener {
+public class ProjectileEventListener {
 
     private final PlotAreaManager plotAreaManager;
 
     @Inject
     public ProjectileEventListener(final @NonNull PlotAreaManager plotAreaManager) {
         this.plotAreaManager = plotAreaManager;
+        Stimuli.global().listen(ProjectileHitEvent.BLOCK, this::onProjectileHit);
+        //Stimuli.global().listen(ProjectileHitEvent.ENTITY, this::onPotionSplash);
     }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onLingeringPotionSplash(LingeringPotionSplashEvent event) {
-        // Cancelling projectile hit events still results in area effect clouds.
-        // We need to cancel the splash events to get rid of those.
-        onProjectileHit(event);
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onPotionSplash(PotionSplashEvent event) {
+/*
+    public InteractionResult onPotionSplash() {
         ThrownPotion damager = event.getPotion();
-        Location location = BukkitUtil.adapt(damager.getLocation());
+        Location location = FabricUtil.adapt(damager.getLocation());
         if (!this.plotAreaManager.hasPlotArea(location.getWorldName())) {
             return;
         }
@@ -154,73 +141,68 @@ public class ProjectileEventListener implements Listener {
             }
         }
     }
-
-    @EventHandler
-    public void onProjectileHit(ProjectileHitEvent event) {
-        Projectile entity = event.getEntity();
-        Location location = BukkitUtil.adapt(entity.getLocation());
+*/
+    public InteractionResult onProjectileHit(Projectile entity, BlockHitResult blockHitResult) {
+        Location location = FabricUtil.adapt(GlobalPos.of(entity.level().dimension(), entity.blockPosition()));
         if (!this.plotAreaManager.hasPlotArea(location.getWorldName())) {
-            return;
+            return InteractionResult.PASS;
         }
         PlotArea area = location.getPlotArea();
         if (area == null) {
-            return;
+            return InteractionResult.PASS;
         }
         Plot plot = area.getPlot(location);
-        ProjectileSource shooter = entity.getShooter();
-        if (shooter instanceof Player) {
-            if (!((Player) shooter).isOnline()) {
+        Entity shooter = entity.getOwner();
+        if (shooter instanceof ServerPlayer player) {
+            if (!(player.connection.isAcceptingMessages())) {
                 if (plot != null) {
-                    if (plot.isAdded(((Player) shooter).getUniqueId()) || plot.getFlag(ProjectilesFlag.class)) {
-                        return;
+                    if (plot.isAdded((player.getUUID())) || plot.getFlag(ProjectilesFlag.class)) {
+                        return InteractionResult.PASS;
                     }
                 } else if (PlotFlagUtil.isAreaRoadFlagsAndFlagEquals(area, ProjectilesFlag.class, true)) {
-                    return;
+                    return InteractionResult.PASS;
                 }
 
-                entity.remove();
-                event.setCancelled(true);
-                return;
+                entity.remove(Entity.RemovalReason.DISCARDED);
+                return InteractionResult.FAIL;
             }
 
-            PlotPlayer<?> pp = BukkitUtil.adapt((Player) shooter);
+            PlotPlayer<?> pp = FabricUtil.adapt((ServerPlayer) shooter);
             if (plot == null) {
                 if (!PlotFlagUtil.isAreaRoadFlagsAndFlagEquals(area, ProjectilesFlag.class, true) && !pp.hasPermission(
                         Permission.PERMISSION_ADMIN_PROJECTILE_UNOWNED
                 )) {
-                    entity.remove();
-                    event.setCancelled(true);
+                    entity.remove(Entity.RemovalReason.DISCARDED);
+                    return InteractionResult.FAIL;
                 }
-                return;
+                return InteractionResult.PASS;
             }
             if (plot.isAdded(pp.getUUID()) || pp.hasPermission(Permission.PERMISSION_ADMIN_PROJECTILE_OTHER) || plot.getFlag(
-                    ProjectilesFlag.class) || (entity.getType().equals(EntityType.FISHING_HOOK) && plot.getFlag(
+                    ProjectilesFlag.class) || (entity.getType().equals(EntityType.FISHING_BOBBER) && plot.getFlag(
                     FishingFlag.class))) {
-                return;
+                return InteractionResult.PASS;
             }
-            entity.remove();
-            event.setCancelled(true);
-            return;
+            entity.remove(Entity.RemovalReason.DISCARDED);
+            return InteractionResult.FAIL;
         }
-        if (!(shooter instanceof Entity) && shooter != null) {
+        if (shooter == null) {
             if (plot == null) {
-                entity.remove();
-                event.setCancelled(true);
-                return;
+                entity.remove(Entity.RemovalReason.DISCARDED);
+                return InteractionResult.FAIL;
             }
             Location sLoc =
-                    BukkitUtil.adapt(((BlockProjectileSource) shooter).getBlock().getLocation());
+                    FabricUtil.adapt(GlobalPos.of(shooter.level().dimension(), shooter.blockPosition()));
             if (!area.contains(sLoc.getX(), sLoc.getZ())) {
-                entity.remove();
-                event.setCancelled(true);
-                return;
+                entity.remove(Entity.RemovalReason.DISCARDED);
+                return InteractionResult.FAIL;
             }
             Plot sPlot = area.getOwnedPlotAbs(sLoc);
             if (sPlot == null || !PlotHandler.sameOwners(plot, sPlot)) {
-                entity.remove();
-                event.setCancelled(true);
+                entity.remove(Entity.RemovalReason.DISCARDED);
+                return InteractionResult.FAIL;
             }
         }
+        return InteractionResult.PASS;
     }
 
 }

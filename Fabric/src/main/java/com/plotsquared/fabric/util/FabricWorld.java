@@ -26,10 +26,10 @@ public class FabricWorld implements World<ServerLevel> {
         HAS_MIN_Y = temp;
     }
 
-    private final ServerLevel world;
+    private final ResourceKey<Level> world;
 
     private FabricWorld(final ServerLevel world) {
-        this.world = world;
+        this.world = world.dimension();
     }
 
     /**
@@ -38,8 +38,8 @@ public class FabricWorld implements World<ServerLevel> {
      * @param worldName World name
      * @return World instance
      */
-    public static @NonNull FabricWorld of(final @NonNull ResourceKey<Level> worldName) {
-        final ServerLevel fabricWorld = FabricPlatform.SERVER.getLevel(worldName);
+    public static @NonNull FabricWorld of(final @NonNull String worldName) {
+        final ServerLevel fabricWorld = FabricUtil.getWorld(worldName);
         if (fabricWorld == null) {
             throw new IllegalArgumentException(String.format("There is no world with the name '%s'", worldName));
         }
@@ -53,12 +53,14 @@ public class FabricWorld implements World<ServerLevel> {
      * @return World instance
      */
     public static @NonNull FabricWorld of(final ServerLevel world) {
-        FabricWorld fabricWorld = worldMap.get(world.serverLevelData.getLevelName());
-        if (fabricWorld != null && fabricWorld.getPlatformWorld().equals(world)) {
-            return fabricWorld;
+        FabricWorld fabricWorld = worldMap.get(world.dimension().location().getPath());
+        if (fabricWorld != null) {
+            if (fabricWorld.getPlatformWorld().equals(world)) {
+                return fabricWorld;
+            }
         }
         fabricWorld = new FabricWorld(world);
-        worldMap.put(world.serverLevelData.getLevelName(), fabricWorld);
+        worldMap.put(world.dimension().location().getPath(), fabricWorld);
         return fabricWorld;
     }
 
@@ -82,22 +84,22 @@ public class FabricWorld implements World<ServerLevel> {
 
     @Override
     public ServerLevel getPlatformWorld() {
-        return this.world;
+        return FabricPlatform.SERVER.getLevel(this.world);
     }
 
     @Override
     public @NonNull String getName() {
-        return this.world.serverLevelData.getLevelName();
+        return this.world.location().getPath();
     }
 
     @Override
     public int getMinHeight() {
-        return getMinWorldHeight(world);
+        return getMinWorldHeight(this.getPlatformWorld());
     }
 
     @Override
     public int getMaxHeight() {
-        return getMaxWorldHeight(world) - 1;
+        return getMaxWorldHeight(this.getPlatformWorld()) - 1;
     }
 
     @Override
@@ -118,7 +120,7 @@ public class FabricWorld implements World<ServerLevel> {
     }
 
     public String toString() {
-        return "BukkitWorld(world=" + this.world + ")";
+        return "FabricWorld(world=" + this.world.location().getPath() + ")";
     }
 
 }

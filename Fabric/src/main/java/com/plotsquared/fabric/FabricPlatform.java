@@ -22,11 +22,11 @@ import com.google.inject.Guice;
 import com.google.inject.Inject;
 import com.google.inject.Injector;
 import com.google.inject.Key;
+import com.google.inject.Singleton;
 import com.google.inject.Stage;
+import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
-import com.mojang.serialization.Codec;
-import com.mojang.serialization.Decoder;
-import com.mojang.serialization.JsonOps;
+import com.mojang.brigadier.tree.LiteralCommandNode;
 import com.plotsquared.core.PlotPlatform;
 import com.plotsquared.core.PlotSquared;
 import com.plotsquared.core.backup.BackupManager;
@@ -35,12 +35,8 @@ import com.plotsquared.core.configuration.ConfigurationNode;
 import com.plotsquared.core.configuration.ConfigurationSection;
 import com.plotsquared.core.configuration.ConfigurationUtil;
 import com.plotsquared.core.configuration.Settings;
-import com.plotsquared.core.configuration.Storage;
-import com.plotsquared.core.configuration.caption.TranslatableCaption;
 import com.plotsquared.core.configuration.file.YamlConfiguration;
 import com.plotsquared.core.database.DBFunc;
-import com.plotsquared.core.events.RemoveRoadEntityEvent;
-import com.plotsquared.core.events.Result;
 import com.plotsquared.core.generator.GeneratorWrapper;
 import com.plotsquared.core.generator.IndependentPlotGenerator;
 import com.plotsquared.core.generator.SingleWorldGenerator;
@@ -52,13 +48,9 @@ import com.plotsquared.core.inject.annotations.WorldFile;
 import com.plotsquared.core.inject.modules.PlotSquaredModule;
 import com.plotsquared.core.listener.PlotListener;
 import com.plotsquared.core.listener.WESubscriber;
-import com.plotsquared.core.location.World;
-import com.plotsquared.core.player.ConsolePlayer;
 import com.plotsquared.core.player.PlotPlayer;
 import com.plotsquared.core.plot.Plot;
 import com.plotsquared.core.plot.PlotArea;
-import com.plotsquared.core.plot.PlotAreaTerrainType;
-import com.plotsquared.core.plot.PlotAreaType;
 import com.plotsquared.core.plot.PlotId;
 import com.plotsquared.core.plot.comment.CommentManager;
 import com.plotsquared.core.plot.flag.implementations.ServerPlotFlag;
@@ -71,7 +63,6 @@ import com.plotsquared.core.util.EventDispatcher;
 import com.plotsquared.core.util.FileUtils;
 import com.plotsquared.core.util.PlatformWorldManager;
 import com.plotsquared.core.util.PlayerManager;
-import com.plotsquared.core.util.PremiumVerification;
 import com.plotsquared.core.util.SetupUtils;
 import com.plotsquared.core.util.WorldUtil;
 import com.plotsquared.core.util.task.TaskManager;
@@ -94,58 +85,44 @@ import com.plotsquared.fabric.listener.HighFreqBlockEventListener;
 import com.plotsquared.fabric.listener.PlayerEventListener;
 import com.plotsquared.fabric.listener.PlayerEventListener1201;
 import com.plotsquared.fabric.listener.ProjectileEventListener;
+import com.plotsquared.fabric.listener.ServerListener;
 import com.plotsquared.fabric.listener.SingleWorldListener;
 import com.plotsquared.fabric.listener.WorldEvents;
-import com.plotsquared.fabric.placeholder.MiniPlaceholders;
 import com.plotsquared.fabric.player.FabricPlayerManager;
+import com.plotsquared.fabric.util.CommandSuggestionProvider;
 import com.plotsquared.fabric.util.FabricTimeConverter;
 import com.plotsquared.fabric.util.FabricUtil;
 import com.plotsquared.fabric.util.FabricWorld;
 import com.plotsquared.fabric.util.SetGenFabric;
 import com.plotsquared.fabric.util.TranslationUpdateManager;
+import com.plotsquared.fabric.util.task.CraftScheduler;
 import com.plotsquared.fabric.util.task.FabricTaskManager;
 import com.plotsquared.fabric.uuid.LuckPermsUUIDService;
-import com.plotsquared.fabric.uuid.OfflinePlayerUUIDService;
 import com.plotsquared.fabric.uuid.SQLiteUUIDService;
 import com.plotsquared.fabric.uuid.SquirrelIdUUIDService;
 import com.sk89q.worldedit.WorldEdit;
+import me.isaiah.multiworld.MultiworldMod;
 import net.fabricmc.api.ModInitializer;
-import net.fabricmc.fabric.api.biome.v1.BiomeSelectionContext;
-import net.fabricmc.fabric.api.biome.v1.BiomeSelectors;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
-import net.fabricmc.fabric.impl.biome.modification.BiomeSelectionContextImpl;
 import net.fabricmc.loader.api.FabricLoader;
 import net.kyori.adventure.audience.Audience;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
+import net.minecraft.commands.CommandBuildContext;
+import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.commands.synchronization.SuggestionProviders;
 import net.minecraft.core.GlobalPos;
-import net.minecraft.core.Holder;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.RegistryOps;
-import net.minecraft.resources.ResourceKey;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.level.biome.Biome;
-import net.minecraft.world.level.biome.BiomeGenerationSettings;
-import net.minecraft.world.level.biome.BiomeManager;
-import net.minecraft.world.level.biome.BiomeSources;
-import net.minecraft.world.level.biome.Biomes;
-import net.minecraft.world.level.biome.Climate;
-import net.minecraft.world.level.biome.FixedBiomeSource;
-import net.minecraft.world.level.biome.MultiNoiseBiomeSource;
 import net.minecraft.world.level.chunk.ChunkGenerator;
-import net.minecraft.world.level.chunk.ChunkGenerators;
 import net.minecraft.world.level.chunk.LevelChunk;
-import net.minecraft.world.level.levelgen.FlatLevelSource;
 import net.minecraft.world.level.storage.LevelResource;
 import org.apache.commons.compress.utils.Lists;
 import org.apache.logging.log4j.LogManager;
@@ -153,19 +130,21 @@ import org.apache.logging.log4j.Logger;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.incendo.serverlib.ServerLib;
+import org.jetbrains.annotations.NotNull;
 
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
-import java.lang.reflect.Method;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.URL;
+import java.net.URLConnection;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
 import java.util.UUID;
@@ -173,8 +152,8 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 
+@Singleton
 public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer> {
 
     private static final Logger LOGGER = LogManager.getLogger("PlotSquared/" + FabricPlatform.class.getSimpleName());
@@ -189,10 +168,9 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
     private int[] version;
     private String pluginName;
     private SingleWorldListener singleWorldListener;
-    private Method methodUnloadChunk0;
-    private boolean methodUnloadSetup = false;
-    private boolean metricsStarted;
-    private boolean faweHook = true;
+    private boolean faweHook = false;
+
+    private static CraftScheduler scheduler;
 
     private Injector injector;
 
@@ -219,11 +197,12 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
     @BackgroundPipeline
     private UUIDPipeline backgroundPipeline;
     @Inject
-    private PlatformWorldManager<World> worldManager;
+    private PlatformWorldManager<ServerLevel> worldManager;
     private Locale serverLocale;
 
     public static MinecraftServer SERVER;
 
+    public static FabricPlatform PLATFORM;
 
     @SuppressWarnings("StringSplitter")
     @Override
@@ -263,27 +242,37 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
     @Override
     @SuppressWarnings("deprecation") // Paper deprecation
     public void onInitialize() {
+        PlotSquaredDataAttachments dataAttachments = new PlotSquaredDataAttachments();
+        this.scheduler = new CraftScheduler();
+        PLATFORM = this;
+        CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
+            if (Settings.Enabled_Components.COMMANDS) {
+                this.registerCommands(dispatcher, registryAccess, environment);
+            }
+        });
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
             onDisable();
         });
+        ServerTickEvents.START_SERVER_TICK.register(server -> {
+            getScheduler().mainThreadHeartbeat(server.getTickCount());
+        });
 
-        this.pluginName = "plotsquared-fabric";
+        ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+            SERVER = server;
+            this.pluginName = "PlotSquared";
 
-        final TaskTime.TimeConverter timeConverter;
-        timeConverter = new FabricTimeConverter();
+            final TaskTime.TimeConverter timeConverter;
+            timeConverter = new FabricTimeConverter();
 
-        // Stuff that needs to be created before the PlotSquared instance
-        PlotPlayer.registerConverter(ServerPlayer.class, FabricUtil::adapt);
-        TaskManager.setPlatformImplementation(new FabricTaskManager(this, timeConverter));
+            // Stuff that needs to be created before the PlotSquared instance
+            PlotPlayer.registerConverter(ServerPlayer.class, FabricUtil::adapt);
+            TaskManager.setPlatformImplementation(new FabricTaskManager(this, timeConverter));
 
-        ServerTickEvents.START_SERVER_TICK.register(FabricTaskManager.fabricTickListener::OnServerTick);
+            final PlotSquared plotSquared = new PlotSquared(this, "Fabric");
 
-
-        final PlotSquared plotSquared = new PlotSquared(this, "Bukkit");
-
-        // FastAsyncWorldEdit
-        if (Settings.FAWE_Components.FAWE_HOOK) {
-            faweHook = true;
+            // FastAsyncWorldEdit
+            if (Settings.FAWE_Components.FAWE_HOOK) {
+                faweHook = true;
             /*
             if(FabricLoader.getInstance().isModLoaded("worldedit")) {
                 faweHook = true;
@@ -297,107 +286,81 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
                             ".net/job/FastAsyncWorldEdit/");
                 }
             }*/
-        }
-
-        // We create the injector after PlotSquared has been initialized, so that we have access
-        // to generated instances and settings
-        this.injector = Guice
-                .createInjector(
-                        Stage.PRODUCTION,
-                        new PermissionModule(),
-                        new WorldManagerModule(),
-                        new PlotSquaredModule(),
-                        new FabricModule(this),
-                        new BackupModule()
-                );
-        this.injector.injectMembers(this);
-
-        try {
-            this.injector.getInstance(TranslationUpdateManager.class).upgradeTranslationFile();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-
-        this.serverLocale = Locale.forLanguageTag(Settings.Enabled_Components.DEFAULT_LOCALE);
-
-        /*
-        if (PremiumVerification.isPremium() && Settings.Enabled_Components.UPDATE_NOTIFICATIONS) {
-            injector.getInstance(UpdateUtility.class).updateChecker();
-        }
-*/
-        /*
-        if (PremiumVerification.isPremium()) {
-            LOGGER.info("PlotSquared version licensed to Spigot user {}", getUserID());
-            LOGGER.info("https://www.spigotmc.org/resources/{}", getResourceID());
-            LOGGER.info("Download ID: {}", getDownloadID());
-            LOGGER.info("Thanks for supporting us :)");
-        } else {
-            LOGGER.info("Couldn't verify purchase :(");
-        }
-*/
-
-        // Database
-        if (Settings.Enabled_Components.DATABASE) {
-            plotSquared.setupDatabase();
-        }
-
-        // Check if we need to convert old flag values, etc
-        if (!plotSquared.getConfigurationVersion().equalsIgnoreCase("v5")) {
-            // Perform upgrade
-            if (DBFunc.dbManager.convertFlags()) {
-                LOGGER.info("Flags were converted successfully!");
-                // Update the config version
-                try {
-                    plotSquared.setConfigurationVersion("v5");
-                } catch (final Exception e) {
-                    e.printStackTrace();
-                }
             }
-        }
 
-        // Comments
-        CommentManager.registerDefaultInboxes();
-
-        // Do stuff that was previously done in PlotSquared
-        // Kill entities
-        if (Settings.Enabled_Components.KILL_ROAD_MOBS || Settings.Enabled_Components.KILL_ROAD_VEHICLES) {
-            this.runEntityTask();
-        }
-
-        // WorldEdit
-        if (Settings.Enabled_Components.WORLDEDIT_RESTRICTIONS) {
+            // We create the injector after PlotSquared has been initialized, so that we have access
+            // to generated instances and settings
+            this.injector = Guice
+                    .createInjector(
+                            Stage.PRODUCTION,
+                            new PermissionModule(),
+                            new WorldManagerModule(),
+                            new PlotSquaredModule(),
+                            new FabricModule(this),
+                            new BackupModule()
+                    );
+            this.injector.injectMembers(this);
+            MultiworldMod.on_server_started(server);
             try {
-                WorldEdit.getInstance().getEventBus().register(this.injector().getInstance(WESubscriber.class));
-                LOGGER.info("{} hooked into WorldEdit", this.pluginName());
-            } catch (Throwable e) {
-                LOGGER.error(
-                        "Incompatible version of WorldEdit, please upgrade: https://builds.enginehub.org/job/worldedit?branch=master");
+                this.injector.getInstance(TranslationUpdateManager.class).upgradeTranslationFile();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
             }
-        }
 
-        if (Settings.Enabled_Components.EVENTS) {
-            PlayerEventListener playerEventListener = injector.getInstance(PlayerEventListener.class);
-            PlayerEventListener1201 playerEventListener1201 = injector.getInstance(PlayerEventListener1201.class);
-            BlockEventListener blockEventListener = injector.getInstance(BlockEventListener.class);
-            if (Settings.HIGH_FREQUENCY_LISTENER) {
-                HighFreqBlockEventListener highFreqBlockEventListener = injector.getInstance(HighFreqBlockEventListener.class);
+            this.serverLocale = Locale.forLanguageTag(Settings.Enabled_Components.DEFAULT_LOCALE);
+
+            // Database
+            if (Settings.Enabled_Components.DATABASE) {
+                plotSquared.setupDatabase();
             }
-            BlockEventListener117 blockEventListener117 = injector.getInstance(BlockEventListener117.class);
-            EntityEventListener entityEventListener = injector.getInstance(EntityEventListener.class);
-            ProjectileEventListener projectileEventListener = injector.getInstance(ProjectileEventListener.class);
 
-
-            //getServer().getPluginManager().registerEvents(injector().getInstance(ServerListener.class), this);
-            ServerLifecycleEvents.SERVER_STARTED.register(server -> {
-                if (FabricLoader.getInstance().isModLoaded("miniplaceholders")
-                    /*&& Settings.Enabled_Components.USE_MINIPLACEHOLDERS*/) {
-                    new MiniPlaceholders(placeholderRegistry());
-                    ConsolePlayer.getConsole().sendMessage(TranslatableCaption.of("placeholder.miniplaceholders.hooked"));
+            // Check if we need to convert old flag values, etc
+            if (!plotSquared.getConfigurationVersion().equalsIgnoreCase("v5")) {
+                // Perform upgrade
+                if (DBFunc.dbManager.convertFlags()) {
+                    LOGGER.info("Flags were converted successfully!");
+                    // Update the config version
+                    try {
+                        plotSquared.setConfigurationVersion("v5");
+                    } catch (final Exception e) {
+                        e.printStackTrace();
+                    }
                 }
-            });
+            }
 
-            EntitySpawnListener entitySpawnListener = injector.getInstance(EntitySpawnListener.class);
+            // Comments
+            CommentManager.registerDefaultInboxes();
 
+            // Do stuff that was previously done in PlotSquared
+            // Kill entities
+            if (Settings.Enabled_Components.KILL_ROAD_MOBS || Settings.Enabled_Components.KILL_ROAD_VEHICLES) {
+                this.runEntityTask();
+            }
+
+            // WorldEdit
+            if (Settings.Enabled_Components.WORLDEDIT_RESTRICTIONS) {
+                try {
+                    WorldEdit.getInstance().getEventBus().register(this.injector().getInstance(WESubscriber.class));
+                    LOGGER.info("{} hooked into WorldEdit", this.pluginName());
+                } catch (Throwable e) {
+                    LOGGER.error(
+                            "Incompatible version of WorldEdit, please upgrade: https://builds.enginehub.org/job/worldedit?branch=master");
+                }
+            }
+
+            if (Settings.Enabled_Components.EVENTS) {
+                injector.getInstance(PlayerEventListener.class);
+                injector.getInstance(PlayerEventListener1201.class);
+                injector.getInstance(BlockEventListener.class);
+                if (Settings.HIGH_FREQUENCY_LISTENER) {
+                    injector.getInstance(HighFreqBlockEventListener.class);
+                }
+                injector.getInstance(BlockEventListener117.class);
+                injector.getInstance(EntityEventListener.class);
+                injector.getInstance(ProjectileEventListener.class);
+                injector.getInstance(ServerListener.class);
+                injector.getInstance(EntitySpawnListener.class);
+                injector.getInstance(PlayerEventListener1201.class);
 
             /*
             if (PaperLib.isPaper() && Settings.Paper_Components.PAPER_LISTENERS) {
@@ -405,183 +368,188 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
             } else {
                 getServer().getPluginManager().registerEvents(injector().getInstance(SpigotListener.class), this);
             }*/
-            this.plotListener.startRunnable();
-        }
-
-        // Required
-        WorldEvents worldEvents = injector.getInstance(WorldEvents.class);
-        if (Settings.Enabled_Components.CHUNK_PROCESSOR) {
-            ChunkListener chunkListener = injector.getInstance(ChunkListener.class);
-        }
-
-        // Commands
-        if (Settings.Enabled_Components.COMMANDS) {
-            this.registerCommands();
-        }
-
-        // Permissions
-        this.permissionHandler().initialize();
-
-        if (Settings.Enabled_Components.COMPONENT_PRESETS) {
-            try {
-                injector().getInstance(ComponentPresetManager.class);
-            } catch (final Exception e) {
-                LOGGER.error("Failed to initialize the preset system", e);
+                this.plotListener.startRunnable();
             }
-        }
 
-        // World generators:
-        final ConfigurationSection section = this.worldConfiguration.getConfigurationSection("worlds");
-        final WorldUtil worldUtil = injector().getInstance(WorldUtil.class);
+            // Required
+            injector.getInstance(WorldEvents.class);
+            if (Settings.Enabled_Components.CHUNK_PROCESSOR) {
+                injector.getInstance(ChunkListener.class);
+            }
 
-        if (section != null) {
-            for (String world : section.getKeys(false)) {
-                if (world.equals("CheckingPlotSquaredGenerator")) {
-                    continue;
-                }
-                if (worldUtil.isWorld(world)) {
-                    this.setGenerator(world);
+            // Permissions
+            this.permissionHandler().initialize();
+
+            if (Settings.Enabled_Components.COMPONENT_PRESETS) {
+                try {
+                    injector().getInstance(ComponentPresetManager.class);
+                } catch (final Exception e) {
+                    LOGGER.error("Failed to initialize the preset system", e);
                 }
             }
-            TaskManager.runTaskLater(() -> {
+
+            // World generators:
+            final ConfigurationSection section = this.worldConfiguration.getConfigurationSection("worlds");
+            final WorldUtil worldUtil = injector().getInstance(WorldUtil.class);
+
+            if (section != null) {
                 for (String world : section.getKeys(false)) {
                     if (world.equals("CheckingPlotSquaredGenerator")) {
                         continue;
                     }
-                    if (!worldUtil.isWorld(world) && !world.equals("*")) {
-                        if (Settings.DEBUG) {
-                            LOGGER.warn(
-                                    "`{}` was not properly loaded - {} will now try to load it properly",
-                                    world,
-                                    this.pluginName()
-                            );
-                            LOGGER.warn(
-                                    "- Are you trying to delete this world? Remember to remove it from the worlds.yml, bukkit.yml and multiverse worlds.yml");
-                            LOGGER.warn("- Your world management plugin may be faulty (or non existent)");
-                            LOGGER.warn("- The named world is not a plot world");
-                            LOGGER.warn("This message may also be a false positive and could be ignored.");
-                        }
+                    if (worldUtil.isWorld(world)) {
                         this.setGenerator(world);
                     }
                 }
-            }, TaskTime.ticks(1L));
-        }
+                TaskManager.runTaskLater(() -> {
+                    for (String world : section.getKeys(false)) {
+                        if (world.equals("CheckingPlotSquaredGenerator")) {
+                            continue;
+                        }
+                        if (!worldUtil.isWorld(world) && !world.equals("*")) {
+                            if (Settings.DEBUG) {
+                                LOGGER.warn(
+                                        "`{}` was not properly loaded - {} will now try to load it properly",
+                                        world,
+                                        this.pluginName()
+                                );
+                                LOGGER.warn(
+                                        "- Are you trying to delete this world? Remember to remove it from the worlds.yml, bukkit.yml and multiverse worlds.yml");
+                                LOGGER.warn("- Your world management plugin may be faulty (or non existent)");
+                                LOGGER.warn("- The named world is not a plot world");
+                                LOGGER.warn("This message may also be a false positive and could be ignored.");
+                            }
+                            this.setGenerator(world);
+                        }
+                    }
+                }, TaskTime.ticks(1L));
+            }
 
-        plotSquared.startExpiryTasks();
+            plotSquared.startExpiryTasks();
 
-        // Once the server has loaded force updating all generators known to PlotSquared
-        TaskManager.runTaskLater(() -> PlotSquared.platform().setupUtils().updateGenerators(true), TaskTime.ticks(1L));
+            // Once the server has loaded force updating all generators known to PlotSquared
+            TaskManager.runTaskLater(() -> PlotSquared.platform().setupUtils().updateGenerators(true), TaskTime.ticks(1L));
 
-        // Services are accessed in order
-        final CacheUUIDService cacheUUIDService = new CacheUUIDService(Settings.UUID.UUID_CACHE_SIZE);
-        this.impromptuPipeline.registerService(cacheUUIDService);
-        this.backgroundPipeline.registerService(cacheUUIDService);
-        this.impromptuPipeline.registerConsumer(cacheUUIDService);
-        this.backgroundPipeline.registerConsumer(cacheUUIDService);
+            // Services are accessed in order
+            final CacheUUIDService cacheUUIDService = new CacheUUIDService(Settings.UUID.UUID_CACHE_SIZE);
+            this.impromptuPipeline.registerService(cacheUUIDService);
+            this.backgroundPipeline.registerService(cacheUUIDService);
+            this.impromptuPipeline.registerConsumer(cacheUUIDService);
+            this.backgroundPipeline.registerConsumer(cacheUUIDService);
 
-        // Now, if the server is in offline mode we can only use profiles and direct UUID
-        // access, and so we skip the player profile stuff as well as SquirrelID (Mojang lookups)
-        if (Settings.UUID.OFFLINE) {
-            final OfflineModeUUIDService offlineModeUUIDService = new OfflineModeUUIDService();
-            this.impromptuPipeline.registerService(offlineModeUUIDService);
-            this.backgroundPipeline.registerService(offlineModeUUIDService);
-            LOGGER.info("(UUID) Using the offline mode UUID service");
-        }
-
+            // Now, if the server is in offline mode we can only use profiles and direct UUID
+            // access, and so we skip the player profile stuff as well as SquirrelID (Mojang lookups)
+            if (Settings.UUID.OFFLINE) {
+                final OfflineModeUUIDService offlineModeUUIDService = new OfflineModeUUIDService();
+                this.impromptuPipeline.registerService(offlineModeUUIDService);
+                this.backgroundPipeline.registerService(offlineModeUUIDService);
+                LOGGER.info("(UUID) Using the offline mode UUID service");
+            }
+/*
         if (Settings.UUID.SERVICE_BUKKIT) {
             final OfflinePlayerUUIDService offlinePlayerUUIDService = new OfflinePlayerUUIDService();
             this.impromptuPipeline.registerService(offlinePlayerUUIDService);
             this.backgroundPipeline.registerService(offlinePlayerUUIDService);
         }
+*/
+            final SQLiteUUIDService sqLiteUUIDService = new SQLiteUUIDService("user_cache.db");
 
-        final SQLiteUUIDService sqLiteUUIDService = new SQLiteUUIDService("user_cache.db");
-
-        final SQLiteUUIDService legacyUUIDService;
-        if (Settings.UUID.LEGACY_DATABASE_SUPPORT && FileUtils
-                .getFile(PlotSquared.platform().getDirectory(), "usercache.db")
-                .exists()) {
-            legacyUUIDService = new SQLiteUUIDService("usercache.db");
-        } else {
-            legacyUUIDService = null;
-        }
-
-        final LuckPermsUUIDService luckPermsUUIDService;
-        if (Settings.UUID.SERVICE_LUCKPERMS && FabricLoader.getInstance().isModLoaded("luckperms")) {
-            luckPermsUUIDService = new LuckPermsUUIDService();
-            LOGGER.info("(UUID) Using LuckPerms as a complementary UUID service");
-        } else {
-            luckPermsUUIDService = null;
-        }
-
-        if (!Settings.UUID.OFFLINE) {
-            this.impromptuPipeline.registerService(sqLiteUUIDService);
-            this.backgroundPipeline.registerService(sqLiteUUIDService);
-            this.impromptuPipeline.registerConsumer(sqLiteUUIDService);
-            this.backgroundPipeline.registerConsumer(sqLiteUUIDService);
-
-            if (legacyUUIDService != null) {
-                this.impromptuPipeline.registerService(legacyUUIDService);
-                this.backgroundPipeline.registerService(legacyUUIDService);
+            final SQLiteUUIDService legacyUUIDService;
+            if (Settings.UUID.LEGACY_DATABASE_SUPPORT && FileUtils
+                    .getFile(PlotSquared.platform().getDirectory(), "usercache.db")
+                    .exists()) {
+                legacyUUIDService = new SQLiteUUIDService("usercache.db");
+            } else {
+                legacyUUIDService = null;
             }
 
-            // Plugin providers
-            if (luckPermsUUIDService != null) {
-                this.impromptuPipeline.registerService(luckPermsUUIDService);
-                this.backgroundPipeline.registerService(luckPermsUUIDService);
+            final LuckPermsUUIDService luckPermsUUIDService;
+            if (Settings.UUID.SERVICE_LUCKPERMS && FabricLoader.getInstance().isModLoaded("luckperms")) {
+                luckPermsUUIDService = new LuckPermsUUIDService();
+                LOGGER.info("(UUID) Using LuckPerms as a complementary UUID service");
+            } else {
+                luckPermsUUIDService = null;
             }
-            if (Settings.UUID.IMPROMPTU_SERVICE_MOJANG_API) {
-                final SquirrelIdUUIDService impromptuMojangService = new SquirrelIdUUIDService(Settings.UUID.IMPROMPTU_LIMIT);
-                this.impromptuPipeline.registerService(impromptuMojangService);
-            }
-            final SquirrelIdUUIDService backgroundMojangService = new SquirrelIdUUIDService(Settings.UUID.BACKGROUND_LIMIT);
-            this.backgroundPipeline.registerService(backgroundMojangService);
-        } else {
-            this.impromptuPipeline.registerService(sqLiteUUIDService);
-            this.backgroundPipeline.registerService(sqLiteUUIDService);
-            this.impromptuPipeline.registerConsumer(sqLiteUUIDService);
-            this.backgroundPipeline.registerConsumer(sqLiteUUIDService);
 
-            if (legacyUUIDService != null) {
-                this.impromptuPipeline.registerService(legacyUUIDService);
-                this.backgroundPipeline.registerService(legacyUUIDService);
-            }
-        }
+            if (!Settings.UUID.OFFLINE) {
+                this.impromptuPipeline.registerService(sqLiteUUIDService);
+                this.backgroundPipeline.registerService(sqLiteUUIDService);
+                this.impromptuPipeline.registerConsumer(sqLiteUUIDService);
+                this.backgroundPipeline.registerConsumer(sqLiteUUIDService);
 
-        this.impromptuPipeline.storeImmediately("*", DBFunc.EVERYONE);
-
-        if (Settings.UUID.BACKGROUND_CACHING_ENABLED) {
-            this.startUuidCaching(sqLiteUUIDService, cacheUUIDService);
-        }
-
-        this.startMetrics();
-
-        if (Settings.Enabled_Components.WORLDS) {
-            TaskManager.getPlatformImplementation().taskRepeat(this::unload, TaskTime.seconds(10L));
-            try {
-                singleWorldListener = injector().getInstance(SingleWorldListener.class);
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }
-
-        // Clean up potential memory leak
-
-
-        /* TODO CONNECTION CHECK POSSIBLE ISSUE */
-        FabricTaskManager.runTaskRepeat(() -> {
-            try {
-                for (final PlotPlayer<? extends Player> player : this.playerManager().getPlayers()) {
-                    if (player.getPlatformPlayer() == null || !player.getPlatformPlayer().getServer().getPlayerList().getPlayer(player.getUUID()).connection.isAcceptingMessages()) {
-                        this.playerManager().removePlayer(player);
-                    }
+                if (legacyUUIDService != null) {
+                    this.impromptuPipeline.registerService(legacyUUIDService);
+                    this.backgroundPipeline.registerService(legacyUUIDService);
                 }
-            } catch (final Exception e) {
-                FabricPlatform.LOGGER.warn("Failed to clean up players: " + e.getMessage());
-            }
-        }, TaskTime.seconds(100L));
 
-        // Check if we are in a safe environment
-        ServerLib.checkUnsafeForks();
+                // Plugin providers
+                if (luckPermsUUIDService != null) {
+                    this.impromptuPipeline.registerService(luckPermsUUIDService);
+                    this.backgroundPipeline.registerService(luckPermsUUIDService);
+                }
+                if (Settings.UUID.IMPROMPTU_SERVICE_MOJANG_API) {
+                    final SquirrelIdUUIDService impromptuMojangService = new SquirrelIdUUIDService(Settings.UUID.IMPROMPTU_LIMIT);
+                    this.impromptuPipeline.registerService(impromptuMojangService);
+                }
+                final SquirrelIdUUIDService backgroundMojangService = new SquirrelIdUUIDService(Settings.UUID.BACKGROUND_LIMIT);
+                this.backgroundPipeline.registerService(backgroundMojangService);
+            } else {
+                this.impromptuPipeline.registerService(sqLiteUUIDService);
+                this.backgroundPipeline.registerService(sqLiteUUIDService);
+                this.impromptuPipeline.registerConsumer(sqLiteUUIDService);
+                this.backgroundPipeline.registerConsumer(sqLiteUUIDService);
+
+                if (legacyUUIDService != null) {
+                    this.impromptuPipeline.registerService(legacyUUIDService);
+                    this.backgroundPipeline.registerService(legacyUUIDService);
+                }
+            }
+
+            this.impromptuPipeline.storeImmediately("*", DBFunc.EVERYONE);
+
+            if (Settings.UUID.BACKGROUND_CACHING_ENABLED) {
+                this.startUuidCaching(sqLiteUUIDService, cacheUUIDService);
+            }
+
+            this.startMetrics();
+
+            if (Settings.Enabled_Components.WORLDS) {
+                TaskManager.getPlatformImplementation().taskRepeat(this::unload, TaskTime.seconds(10L));
+                try {
+                    singleWorldListener = injector().getInstance(SingleWorldListener.class);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+
+            // Clean up potential memory leak
+
+
+            /* TODO CONNECTION CHECK POSSIBLE ISSUE
+            FabricTaskManager.runTaskRepeat(() -> {
+                try {
+                    for (final PlotPlayer<? extends Player> player : this.playerManager().getPlayers()) {
+                        if (player.getPlatformPlayer() == null || !player
+                                .getPlatformPlayer()
+                                .getServer()
+                                .getPlayerList()
+                                .getPlayer(
+                                        player.getUUID()).connection.isAcceptingMessages()) {
+                            this.playerManager().removePlayer(player);
+                        }
+                    }
+                } catch (final Exception e) {
+                    FabricPlatform.LOGGER.warn("Failed to clean up players: " + e.getMessage());
+                }
+            }, TaskTime.ticks(100L));
+*/
+            // Check if we are in a safe environment
+            //ServerLib.checkUnsafeForks();
+        });
+    }
+
+    public Logger getLogger() {
+        return LOGGER;
     }
 
     private void unload() {
@@ -591,7 +559,7 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
 
             outer:
             for (final ServerLevel world : SERVER.getAllLevels()) {
-                final String name = world.serverLevelData.getLevelName();
+                final String name = world.dimension().location().getPath();
                 final char char0 = name.charAt(0);
                 if (!Character.isDigit(char0) && char0 != '-') {
                     continue;
@@ -622,7 +590,7 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
                             try {
                                 world.close();
                             } catch (IOException e) {
-                                LOGGER.warn("Failed to unload {}", world.serverLevelData.getLevelName());
+                                LOGGER.warn("Failed to unload {}", world.dimension().location().getPath().toString());
                             }
                             return;
                         } else {
@@ -718,33 +686,65 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
 
     @Override
     public void shutdownServer() {
-        LOGGER.error("PLOTSQUARED FAILED TO LOAD CORRECTLY");
+        LOGGER.error("PLOTSQUARED HAS SHUTDOWN");
     }
 
-    private void registerCommands() {
-        final FabricCommand fabricCommand = new FabricCommand();
-        CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
-            dispatcher.register(Commands
-                    .literal("plots")
-                    .then(Commands.argument("args", StringArgumentType.greedyString()).suggests((context, builder) -> {
-                        fabricCommand.onTabComplete(context.getSource(), context.getCommand(), context.getRootNode().getName(),
-                                context.getArgument("args", String.class).split(" ")
-                        ).forEach(builder::suggest);
-                        return builder.buildFuture();
-                    }))
-                    .executes(context -> {
-                        fabricCommand.onCommand(context.getSource(), context.getCommand(), context.getRootNode().getName(),
-                                context.getArgument("args", String.class).split(" ")
-                        );
-                        return 0;
-                    }));
-        });
+    private void registerCommands(
+            CommandDispatcher<CommandSourceStack> dispatcher,
+            CommandBuildContext registryAccess,
+            Commands.CommandSelection environment
+    ) {
+        LiteralCommandNode<CommandSourceStack> plotsNode;
+        plotsNode = dispatcher.register(Commands
+                .literal("plots")
+                .then(Commands
+                        .argument("arg", StringArgumentType.greedyString())
+                        .suggests((context, builder) -> new CommandSuggestionProvider().getSuggestions(
+                                context,
+                                builder
+                        ))
+                        .executes(context -> {
+                            if (context.getInput().split(" ").length > 1) {
+                                String[] args = Arrays.copyOfRange(context.getInput().split(" "), 1, context.getInput().split(" ").length);
+                                FabricCommand.onCommand(context.getSource(),
+                                        context.getCommand(),
+                                        context.getInput().substring(1, context.getInput().indexOf(" ")),
+                                        args
+                                );
+                            } else {
+                                FabricCommand.onCommand(context.getSource(),
+                                        context.getCommand(),
+                                        context.getInput().substring(1, context.getInput().indexOf(" ")),
+                                        context.getInput().split(" ")
+                                );
+                            }
+                            return 1;
+                        })));
+
+        dispatcher.register(Commands
+                .literal("plot").redirect(plotsNode));
+
+        /*FabricPlatform.SERVER.getCommands().getDispatcher().register(Commands
+                .literal("p").redirect(plotsNode));*/
+
+        dispatcher.register(Commands
+                .literal("plotsquared").redirect(plotsNode));
+        dispatcher.register(Commands
+                .literal("plot2").redirect(plotsNode));
+        dispatcher.register(Commands
+                .literal("p2").redirect(plotsNode));/*
+        FabricPlatform.SERVER.getCommands().getDispatcher().register(Commands
+                .literal("ps").redirect(plotsNode));
+        FabricPlatform.SERVER.getCommands().getDispatcher().register(Commands
+                .literal("p2").redirect(plotsNode));*/
+
     }
 
     @Override
     public @NonNull File getDirectory() {
-        return SERVER.getServerDirectory();
+        return FabricLoader.getInstance().getConfigDir().resolve("PlotSquared").toFile();
     }
+
 
     @Override
     public @NonNull File worldContainer() {
@@ -824,7 +824,7 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
                                         if (entity.hasAttached(PlotSquaredDataAttachments.PS_TMP_TELEPORT)) {
                                             continue;
                                         }
-                                        this.removeRoadEntity(entity, iterator);
+                                        //this.removeRoadEntity(entity, iterator);
                                     }
                                     continue;
                                 }
@@ -837,7 +837,7 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
                                     if (entity.hasAttached(PlotSquaredDataAttachments.PS_TMP_TELEPORT)) {
                                         continue;
                                     }
-                                    this.removeRoadEntity(entity, iterator);
+                                    //this.removeRoadEntity(entity, iterator);
                                 }
                             }
                             continue;
@@ -846,9 +846,11 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
                         case "DRAGON_FIREBALL":
                         case "DROPPED_ITEM":
                             if (Settings.Enabled_Components.KILL_ROAD_ITEMS
-                                    && plotArea.getOwnedPlotAbs(FabricUtil.adapt(GlobalPos.of(entity.level().dimension(),
-                                    entity.blockPosition()))) == null) {
-                                this.removeRoadEntity(entity, iterator);
+                                    && plotArea.getOwnedPlotAbs(FabricUtil.adapt(GlobalPos.of(
+                                    entity.level().dimension(),
+                                    entity.blockPosition()
+                            ))) == null) {
+                                // this.removeRoadEntity(entity, iterator);
                             }
                             // dropped item
                             continue;
@@ -870,7 +872,10 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
                                     PlotId originalPlotId = entity.getAttached(PlotSquaredDataAttachments.SHULKER_PLOT);
                                     if (originalPlotId != null) {
                                         com.plotsquared.core.location.Location pLoc =
-                                                FabricUtil.adapt(GlobalPos.of(entity.level().dimension(), entity.blockPosition()));
+                                                FabricUtil.adapt(GlobalPos.of(
+                                                        entity.level().dimension(),
+                                                        entity.blockPosition()
+                                                ));
                                         PlotArea area = pLoc.getPlotArea();
                                         if (area != null) {
                                             Plot currentPlot = area.getPlotAbs(pLoc);
@@ -878,7 +883,7 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
                                                 if (entity.hasAttached(PlotSquaredDataAttachments.PS_TMP_TELEPORT)) {
                                                     continue;
                                                 }
-                                                this.removeRoadEntity(entity, iterator);
+                                                //  this.removeRoadEntity(entity, iterator);
                                             }
                                         }
                                     }
@@ -981,7 +986,7 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
                                                 if (entity.hasAttached(PlotSquaredDataAttachments.PS_TMP_TELEPORT)) {
                                                     continue;
                                                 }
-                                                this.removeRoadEntity(entity, iterator);
+                                                //this.removeRoadEntity(entity, iterator);
                                             }
                                         }
                                     } else {
@@ -992,7 +997,7 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
                                             if (entity.hasAttached(PlotSquaredDataAttachments.PS_TMP_TELEPORT)) {
                                                 continue;
                                             }
-                                            this.removeRoadEntity(entity, iterator);
+                                            //this.removeRoadEntity(entity, iterator);
                                         }
                                     }
                                 }
@@ -1006,18 +1011,18 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
         }), TaskTime.seconds(1L));
     }
 
-    private void removeRoadEntity(Entity entity, Iterator<Entity> entityIterator) {
-        RemoveRoadEntityEvent event = eventDispatcher.callRemoveRoadEntity(new FabricEntity(entity));
+    /*
+        private void removeRoadEntity(Entity entity, Iterator<Entity> entityIterator) {
+            RemoveRoadEntityEvent event =
+                    eventDispatcher.callRemoveRoadEntity(FabricAdapter.adapt(entity));
+            if (event.getEventResult() == Result.DENY) {
+                return;
+            }
 
-        if (event.getEventResult() == Result.DENY) {
-            return;
-        }
+            entityIterator.remove();
+            entity.remove(Entity.RemovalReason.DISCARDED);
+        }*/
 
-        entityIterator.remove();
-        entity.remove(Entity.RemovalReason.DISCARDED);
-    }
-/*
-    @Override
     public @Nullable
     final ChunkGenerator getDefaultWorldGenerator(
             final @NonNull String worldName,
@@ -1034,35 +1039,17 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
         }
         return (ChunkGenerator) result.specify(worldName);
     }
-*/
+
     @Override
     public @Nullable GeneratorWrapper<?> getGenerator(
             final @NonNull String world,
             final @Nullable String name
     ) {
-        if (name == null) {
-            return null;
+        ChunkGenerator gen = getDefaultWorldGenerator(world, null);
+        if (gen instanceof GeneratorWrapper<?>) {
+            return (GeneratorWrapper<?>) gen;
         }
-
-       // List<Codec<? extends ChunkGenerator>> chunkGeneratorCodecs =
-              //  SERVER.registryAccess().registry(Registries.CHUNK_GENERATOR).get().stream().toList();
-
-        /*if () {
-            ChunkGenerator gen =
-                    SERVER.registryAccess().registry(Registries.CHUNK_GENERATOR).get().get(BuiltInRegistries.CHUNK_GENERATOR).decode()
-                    BuiltInRegistries.CHUNK_GENERATOR //registry
-                    Registries.CHUNK_GENERATOR //resourceKey
-            if (gen instanceof GeneratorWrapper<?>) {
-                return (GeneratorWrapper<?>) gen;
-            }
-            return new BukkitPlotGenerator(world, gen, this.plotAreaManager);
-        } else {*/
-            return new FabricPlotGenerator(
-                    world,
-                    injector().getInstance(Key.get(IndependentPlotGenerator.class, DefaultGenerator.class)),
-                    this.plotAreaManager
-            );
-      //  }
+        return new FabricPlotGenerator(world, gen, this.plotAreaManager);
     }
 
     @Override
@@ -1151,9 +1138,9 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
         ChunkGenerator gen = world.getChunkSource().getGenerator();
         if (gen instanceof FabricPlotGenerator) {
             PlotSquared.get().loadWorld(worldName, (FabricPlotGenerator) gen);
-        } else if (gen != null) {
+        } /*else if (gen != null) {
             PlotSquared.get().loadWorld(worldName, new FabricPlotGenerator(worldName, gen, this.plotAreaManager));
-        } else if (this.worldConfiguration.contains("worlds." + worldName)) {
+        } */ else if (this.worldConfiguration.contains("worlds." + worldName)) {
             PlotSquared.get().loadWorld(worldName, null);
         }
     }
@@ -1233,7 +1220,7 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
 
     @Override
     public com.plotsquared.core.location.@NonNull World<?> getPlatformWorld(final @NonNull String worldName) {
-        return FabricWorld.of(FabricUtil.getWorld(worldName));
+        return FabricWorld.of(worldName);
     }
 
     @Override
@@ -1287,11 +1274,71 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
         /* Make this prettier at some point */
         final String[] languages = new String[]{"en"};
         for (final String language : languages) {
-            if (!new File(new File(FabricLoader.getInstance().getConfigDirectory(), "lang"), String.format("messages_%s.json",
-                    language)).exists()) {
+            if (!new File(new File(getDirectory(), "lang"), String.format(
+                    "messages_%s" +
+                            ".json",
+                    language
+            )).exists()) {
                 this.saveResource(String.format("lang/messages_%s.json", language), false);
                 LOGGER.info("Copied language file 'messages_{}.json'", language);
             }
+        }
+    }
+
+    public @org.jetbrains.annotations.Nullable InputStream getResource(@NotNull String filename) {
+        try {
+            URL url = this.getClass().getClassLoader().getResource(filename);
+            if (url == null) {
+                return null;
+            } else {
+                URLConnection connection = url.openConnection();
+                connection.setUseCaches(false);
+                return connection.getInputStream();
+            }
+        } catch (IOException var4) {
+            return null;
+        }
+    }
+
+    public void saveResource(@NotNull String resourcePath, boolean replace) {
+        if (resourcePath != null && !resourcePath.equals("")) {
+            resourcePath = resourcePath.replace('\\', '/');
+            InputStream in = this.getResource(resourcePath);
+            if (in == null) {
+                throw new IllegalArgumentException("The embedded resource '" + resourcePath + "' cannot be found.");
+            } else {
+                File outFile = new File(getDirectory(), resourcePath);
+                int lastIndex = resourcePath.lastIndexOf(47);
+                File outDir = new File(getDirectory(), resourcePath.substring(0, lastIndex >= 0 ? lastIndex :
+                        0));
+                if (!outDir.exists()) {
+                    outDir.mkdirs();
+                }
+
+                try {
+                    if (outFile.exists() && !replace) {
+                        String var10002 = outFile.getName();
+                        LOGGER.warn("Could not save " + var10002 + " to " + outFile + " because " + outFile.getName() + " " +
+                                "already exists.");
+                    } else {
+                        OutputStream out = new FileOutputStream(outFile);
+                        byte[] buf = new byte[1024];
+
+                        int len;
+                        while ((len = in.read(buf)) > 0) {
+                            out.write(buf, 0, len);
+                        }
+
+                        out.close();
+                        in.close();
+                    }
+                } catch (IOException var10) {
+                    LOGGER.warn("Could not save " + outFile.getName() + " to " + outFile);
+                }
+
+            }
+        } else {
+            throw new IllegalArgumentException("ResourcePath cannot be null or empty");
         }
     }
 
@@ -1304,6 +1351,10 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
     @Override
     public boolean isFaweHooking() {
         return faweHook;
+    }
+
+    public static CraftScheduler getScheduler() {
+        return scheduler;
     }
 
 }

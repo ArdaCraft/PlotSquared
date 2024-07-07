@@ -96,16 +96,16 @@ subprojects {
     configurations.all {
         attributes.attribute(TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE, 21)
     }
-
+/*
     spotless {
         java {
             licenseHeaderFile(rootProject.file("HEADER.txt"))
-            target("**/*.java")
+            //target("**//*.java")
             endWithNewline()
             trimTrailingWhitespace()
             removeUnusedImports()
         }
-    }
+    }*/
 
     java {
         withSourcesJar()

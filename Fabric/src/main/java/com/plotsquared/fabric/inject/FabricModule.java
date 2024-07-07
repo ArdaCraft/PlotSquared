@@ -5,7 +5,6 @@ import com.google.inject.Provides;
 import com.google.inject.Singleton;
 import com.google.inject.assistedinject.FactoryModuleBuilder;
 import com.plotsquared.core.PlotPlatform;
-import com.plotsquared.core.PlotSquared;
 import com.plotsquared.core.configuration.Settings;
 import com.plotsquared.core.generator.HybridGen;
 import com.plotsquared.core.generator.IndependentPlotGenerator;
@@ -47,9 +46,10 @@ import com.plotsquared.fabric.util.FabricRegionManager;
 import com.plotsquared.fabric.util.FabricSetupUtils;
 import com.plotsquared.fabric.util.FabricUtil;
 import com.sk89q.worldedit.extension.platform.Actor;
-import com.sk89q.worldedit.fabric.FabricAdapter;
+import com.sk89q.worldedit.fabric.FabricWorldEdit;
 import net.fabricmc.api.ModInitializer;
 import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.data.models.BlockModelGenerators;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.checkerframework.checker.nullness.qual.NonNull;
@@ -75,7 +75,7 @@ public class FabricModule extends AbstractModule {
         bind(IndependentPlotGenerator.class).annotatedWith(DefaultGenerator.class).to(HybridGen.class);
         // Console actor
         @NonNull CommandSourceStack console = FabricPlatform.SERVER.createCommandSourceStack();
-        bind(Actor.class).annotatedWith(ConsoleActor.class).toInstance(FabricAdapter.adaptCommandSource(console));
+        bind(Actor.class).annotatedWith(ConsoleActor.class).toInstance(FabricWorldEdit.inst.wrapCommandSender(console));
         bind(InventoryUtil.class).to(FabricInventoryUtil.class);
         bind(SetupUtils.class).to(FabricSetupUtils.class);
         bind(WorldUtil.class).to(FabricUtil.class);

@@ -17,7 +17,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package com.plotsquared.fabric.util;
-
+/*
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.stream.JsonReader;
@@ -27,25 +27,19 @@ import com.plotsquared.core.PlotVersion;
 import com.plotsquared.core.configuration.Settings;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.bukkit.Bukkit;
-import org.bukkit.event.Listener;
-import org.bukkit.plugin.java.JavaPlugin;
-import org.bukkit.scheduler.BukkitTask;
 
 import javax.net.ssl.HttpsURLConnection;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URI;
 
-public class UpdateUtility implements Listener {
+public class UpdateUtility {
 
     private static final Logger LOGGER = LogManager.getLogger("PlotSquared/" + UpdateUtility.class.getSimpleName());
 
     public static PlotVersion internalVersion;
     public static String spigotVersion;
     public static boolean hasUpdate;
-    private static BukkitTask task;
-    public final JavaPlugin javaPlugin;
     private boolean notify = true;
 
     @Inject
@@ -94,4 +88,4 @@ public class UpdateUtility implements Listener {
         Bukkit.getScheduler().runTaskLater(javaPlugin, () -> task.cancel(), 20L);
     }
 
-}
+}*/

@@ -182,8 +182,8 @@ public class EntitySpawnListener {
 
     public static void testCreate(final Entity entity) {
         @NonNull ServerLevel world = entity.getServer().getLevel(entity.level().dimension());
-        if (!world.serverLevelData.getLevelName().equals(areaName)) {
-            areaName = world.serverLevelData.getLevelName();
+        if (!world.dimension().location().getPath().equals(areaName)) {
+            areaName = world.dimension().location().getPath();
             hasPlotArea = PlotSquared.get().getPlotAreaManager().hasPlotArea(areaName);
         }
         if (!hasPlotArea) {
@@ -195,7 +195,7 @@ public class EntitySpawnListener {
     public static void test(Entity entity) {
         @NonNull ServerLevel world = entity.getServer().getLevel(entity.level().dimension());
         if (!entity.hasAttached(PlotSquaredDataAttachments.P2)) {
-            if (PlotSquared.get().getPlotAreaManager().hasPlotArea(world.serverLevelData.getLevelName())) {
+            if (PlotSquared.get().getPlotAreaManager().hasPlotArea(world.dimension().location().getPath().toString())) {
                 entity.setAttached(PlotSquaredDataAttachments.P2, GlobalPos.of(world.dimension(), entity.blockPosition()));
             }
         } else {
@@ -203,7 +203,7 @@ public class EntitySpawnListener {
             ServerLevel originWorld = entity.getServer().getLevel(origin.dimension());
             if (!originWorld.equals(world)) {
                 if (!ignoreTP) {
-                    if (!world.serverLevelData.getLevelName().equalsIgnoreCase(originWorld + "_the_end")) {
+                    if (!world.dimension().location().getPath().toString().equalsIgnoreCase(originWorld + "_the_end")) {
                         if (entity.getType() == EntityType.PLAYER) {
                             return;
                         }

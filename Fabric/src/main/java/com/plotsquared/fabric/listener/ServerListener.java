@@ -8,6 +8,8 @@ import com.plotsquared.core.player.ConsolePlayer;
 import com.plotsquared.core.util.EconHandler;
 import com.plotsquared.fabric.FabricPlatform;
 import com.plotsquared.fabric.placeholder.MiniPlaceholders;
+import com.plotsquared.fabric.util.FabricEconHandler;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -22,6 +24,7 @@ public class ServerListener {
     @Inject
     public ServerListener(final @NonNull FabricPlatform plugin) {
         this.plugin = plugin;
+        onServerLoad();
     }
 
     public void onServerLoad() {
@@ -30,9 +33,8 @@ public class ServerListener {
             new MiniPlaceholders(this.plugin.placeholderRegistry());
             ConsolePlayer.getConsole().sendMessage(TranslatableCaption.of("placeholder.miniplaceholders.hooked"));
         }
-        /* TODO SETUP ECON HANDLERS */
-        /*
-        if (Settings.Enabled_Components.ECONOMY && Bukkit.getPluginManager().isPluginEnabled("Vault")) {
+
+        if (Settings.Enabled_Components.ECONOMY && FabricLoader.getInstance().isModLoaded("multieconomy")) {
             EconHandler econHandler = new FabricEconHandler();
             try {
                 if (!econHandler.init()) {
@@ -45,7 +47,7 @@ public class ServerListener {
             if (PlotSquared.platform().econHandler() instanceof MutableEconHandler meh) {
                 meh.setImplementation(econHandler);
             }
-        }*/
+        }
     }
 
     /**

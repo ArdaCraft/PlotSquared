@@ -19,20 +19,15 @@
 package com.plotsquared.fabric.queue;
 
 import com.plotsquared.core.queue.DelegateQueueCoordinator;
-import com.plotsquared.fabric.schematic.StateWrapper;
 import com.sk89q.jnbt.CompoundTag;
-import com.sk89q.worldedit.WorldEdit;
 import com.sk89q.worldedit.entity.Entity;
 import com.sk89q.worldedit.fabric.FabricAdapter;
-import com.sk89q.worldedit.fabric.FabricWorldEdit;
+import com.sk89q.worldedit.fabric.internal.NBTConverter;
 import com.sk89q.worldedit.function.pattern.Pattern;
 import com.sk89q.worldedit.math.BlockVector3;
-import com.sk89q.worldedit.util.Location;
 import com.sk89q.worldedit.world.block.BaseBlock;
 import com.sk89q.worldedit.world.block.BlockState;
-import com.sk89q.worldedit.world.entity.EntityTypes;
 import net.minecraft.core.BlockPos;
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.WorldGenRegion;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobSpawnType;
@@ -70,12 +65,14 @@ public class LimitedRegionWrapperQueue extends DelegateQueueCoordinator {
         boolean result = setBlock(x, y, z, id.toImmutableState());
         if (result && id.hasNbtData()) {
             CompoundTag tag = id.getNbtData();
+            limitedRegion.getChunk(new BlockPos(x,y,z)).setBlockEntityNbt(NBTConverter.fromNative(tag));
+/*
             StateWrapper sw = new StateWrapper(tag);
             try {
                 if (useOtherRestoreTagMethod && getWorld() != null) {
                     sw.restoreTag(getWorld().getName(), x, y, z);
                 } else {
-                    sw.restoreTag(limitedRegion.getBlockState(new BlockPos(x, y, z)));
+                    sw.restoreTag(limitedRegion.getLevel(), limitedRegion.getBlockState(new BlockPos(x, y, z)), new BlockPos(x, y, z));
                 }
             } catch (IllegalArgumentException e) {
                 LOGGER.error("Error attempting to populate tile entity into the world at location {},{},{}", x, y, z, e);
@@ -84,7 +81,7 @@ public class LimitedRegionWrapperQueue extends DelegateQueueCoordinator {
                 useOtherRestoreTagMethod = true;
                 LOGGER.warn("IllegalStateException attempting to populate tile entity into the world at location {},{},{}. " +
                         "Possibly on <=1.17.1, switching to secondary method.", x, y, z, e);
-            }
+            }*/
         }
         return result;
     }
@@ -117,13 +114,16 @@ public class LimitedRegionWrapperQueue extends DelegateQueueCoordinator {
 
     @Override
     public boolean setTile(final int x, final int y, final int z, @NonNull final CompoundTag tag) {
+        limitedRegion.getChunk(new BlockPos(x,y,z)).setBlockEntityNbt(NBTConverter.fromNative(tag));
+        /*
         StateWrapper sw = new StateWrapper(tag);
         try {
-            return sw.restoreTag(limitedRegion.getBlockState(new BlockPos(x, y, z)));
+            return sw.restoreTag(limitedRegion.getLevel(), limitedRegion.getBlockState(new BlockPos(x, y, z)), new BlockPos(x, y, z));
         } catch (IllegalArgumentException e) {
             LOGGER.error("Error attempting to populate tile entity into the world at location {},{},{}", x, y, z, e);
             return false;
-        }
+        }*/
+        return true;
     }
 
     @Override

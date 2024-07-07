@@ -20,10 +20,10 @@ package com.plotsquared.fabric.uuid;
 
 import com.plotsquared.core.uuid.UUIDMapping;
 import com.plotsquared.core.uuid.UUIDService;
+import net.fabricmc.loader.api.FabricLoader;
 import net.luckperms.api.LuckPerms;
+import net.luckperms.api.LuckPermsProvider;
 import net.luckperms.api.model.user.UserManager;
-import org.bukkit.Bukkit;
-import org.bukkit.plugin.RegisteredServiceProvider;
 import org.checkerframework.checker.nullness.qual.NonNull;
 
 import java.util.ArrayList;
@@ -38,9 +38,9 @@ public class LuckPermsUUIDService implements UUIDService {
     private final LuckPerms luckPerms;
 
     public LuckPermsUUIDService() {
-        final RegisteredServiceProvider<LuckPerms> provider = Bukkit.getServicesManager().getRegistration(LuckPerms.class);
-        if (provider != null) {
-            this.luckPerms = provider.getProvider();
+        //final RegisteredServiceProvider<LuckPerms> provider = Bukkit.getServicesManager().getRegistration(LuckPerms.class);
+        if (FabricLoader.getInstance().isModLoaded("luckperms")) {
+            this.luckPerms = LuckPermsProvider.get();
         } else {
             throw new IllegalStateException("LuckPerms not available");
         }

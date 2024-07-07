@@ -21,16 +21,14 @@ package com.plotsquared.fabric.util;
 import com.plotsquared.core.location.Location;
 import com.plotsquared.core.location.PlotLoc;
 
-import com.plotsquared.fabric.entity.EntityWrapper;
-import com.plotsquared.fabric.entity.ReplicatingEntityWrapper;
 import com.sk89q.worldedit.fabric.FabricWorld;
 import com.sk89q.worldedit.math.BlockVector3;
 import com.sk89q.worldedit.regions.CuboidRegion;
 import com.sk89q.worldedit.world.block.BaseBlock;
 import net.minecraft.core.GlobalPos;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.chunk.LevelChunk;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -116,7 +114,7 @@ public class ContentMap {
     void restoreEntities(ServerLevel world) {
         for (Entity entity : this.entities) {
             try {
-                entity.spawn(world, 0, 0);
+                world.addFreshEntity(entity);
             } catch (Exception e) {
                 LOGGER.error("Failed to restore entity", e);
             }

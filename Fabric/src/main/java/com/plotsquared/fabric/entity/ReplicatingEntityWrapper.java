@@ -94,7 +94,6 @@ public final class ReplicatingEntityWrapper extends EntityWrapper {
         if (entity.isNoGravity()) {
             this.noGravity = true;
         }
-        System.out.println(entity.getType());
         switch (entity.getType().toString()) {
             case "BOAT" -> {
                 Boat boat = (Boat) entity;

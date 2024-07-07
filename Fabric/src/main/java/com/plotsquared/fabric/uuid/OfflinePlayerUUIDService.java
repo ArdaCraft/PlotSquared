@@ -17,13 +17,11 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package com.plotsquared.fabric.uuid;
-
+/*
 import com.google.common.base.Charsets;
 import com.plotsquared.core.configuration.Settings;
 import com.plotsquared.core.uuid.UUIDMapping;
 import com.plotsquared.core.uuid.UUIDService;
-import org.bukkit.Bukkit;
-import org.bukkit.OfflinePlayer;
 import org.checkerframework.checker.nullness.qual.NonNull;
 
 import java.util.ArrayList;
@@ -34,11 +32,11 @@ import java.util.UUID;
 /**
  * UUID service that use GameProfiles
  */
-public class OfflinePlayerUUIDService implements UUIDService {
-
+//public class OfflinePlayerUUIDService implements UUIDService {
+/*
     @Override
     public @NonNull List<UUIDMapping> getNames(final @NonNull List<UUID> uuids) {
-        if (Settings.UUID.FORCE_LOWERCASE || Bukkit.getWorlds().isEmpty()) {
+        if (Settings.UUID.FORCE_LOWERCASE) {
             return Collections.emptyList(); // This is useless now
         }
         final List<UUIDMapping> wrappers = new ArrayList<>(uuids.size());
@@ -52,8 +50,8 @@ public class OfflinePlayerUUIDService implements UUIDService {
             } /* This can be safely ignored. If this happens, it is
                                                     probably because it's called before the worlds have
                                                     been loaded. This is bad, but does not break anything */
-        }
-        return wrappers;
+     /*   }
+       / return wrappers;
     }
 
     @Override
@@ -78,4 +76,4 @@ public class OfflinePlayerUUIDService implements UUIDService {
         return wrappers;
     }
 
-}
+}*/

@@ -81,7 +81,6 @@ public class ChunkListener {
         for (ServerLevel world : FabricPlatform.SERVER.getAllLevels()) {
             world.noSave = true;
         }
-
         ServerChunkEvents.CHUNK_LOAD.register(this::onChunkLoad);
         ServerChunkEvents.CHUNK_UNLOAD.register(this::onChunkUnload);
         Stimuli.global().listen(EntitySpawnEvent.EVENT, this::onItemSpawn);
@@ -186,7 +185,7 @@ public class ChunkListener {
             return;
         }
         if (Settings.Chunk_Processor.AUTO_TRIM) {
-            String world = serverLevel.serverLevelData.getLevelName();
+            String world = serverLevel.dimension().location().getPath().toString();
             if ((!Settings.Enabled_Components.WORLDS || !SinglePlotArea.isSinglePlotWorld(world)) && this.plotAreaManager.hasPlotArea(
                     world)) {
                 serverLevel.unload(chunk);
@@ -213,7 +212,7 @@ public class ChunkListener {
                 entity.remove(Entity.RemovalReason.DISCARDED);
                 return InteractionResult.FAIL;
             }
-            if (!this.plotAreaManager.hasPlotArea(serverLevel.serverLevelData.getLevelName())) {
+            if (!this.plotAreaManager.hasPlotArea(serverLevel.dimension().location().getPath())) {
                 return InteractionResult.PASS;
             }
             Entity[] entities = FabricUtil.getEntitiesInChunk(serverLevel, chunk).toArray(new Entity[0]);
@@ -242,7 +241,7 @@ public class ChunkListener {
                entity.remove(Entity.RemovalReason.DISCARDED);
                 return InteractionResult.FAIL;
             }
-            if (!this.plotAreaManager.hasPlotArea(serverLevel.serverLevelData.getLevelName())) {
+            if (!this.plotAreaManager.hasPlotArea(serverLevel.dimension().location().getPath().toString())) {
                 return InteractionResult.PASS;
             }
             Entity[] entities = FabricUtil.getEntitiesInChunk(serverLevel, chunk).toArray(new Entity[0]);
@@ -288,7 +287,7 @@ public class ChunkListener {
     }
 
     public boolean processChunk(ServerLevel serverLevel, LevelChunk chunk, boolean unload) {
-        if (!this.plotAreaManager.hasPlotArea(serverLevel.serverLevelData.getLevelName())) {
+        if (!this.plotAreaManager.hasPlotArea(serverLevel.dimension().location().getPath())) {
             return false;
         }
         Entity[] entities = FabricUtil.getEntitiesInChunk(serverLevel, chunk).toArray(new Entity[0]);

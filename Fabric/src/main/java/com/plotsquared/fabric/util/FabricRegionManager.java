@@ -1,6 +1,9 @@
 package com.plotsquared.fabric.util;
 
+import com.google.common.collect.Iterables;
+import com.google.common.collect.Lists;
 import com.google.inject.Inject;
+import com.google.inject.Singleton;
 import com.plotsquared.core.generator.AugmentedUtils;
 import com.plotsquared.core.inject.factory.ProgressSubscriberFactory;
 import com.plotsquared.core.location.Location;
@@ -23,17 +26,18 @@ import com.sk89q.worldedit.regions.CuboidRegion;
 import com.sk89q.worldedit.world.block.BaseBlock;
 import com.sk89q.worldedit.world.block.BlockTypes;
 import com.sk89q.worldedit.world.entity.EntityTypes;
+import it.unimi.dsi.fastutil.objects.ObjectCollections;
 import net.minecraft.core.GlobalPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.phys.AABB;
-import org.apache.commons.compress.utils.Lists;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -46,6 +50,7 @@ import static com.plotsquared.core.util.entity.EntityCategories.CAP_MONSTER;
 import static com.plotsquared.core.util.entity.EntityCategories.CAP_VEHICLE;
 import static com.plotsquared.fabric.util.FabricUtil.getWorld;
 
+@Singleton
 public class FabricRegionManager extends RegionManager {
 
     private final GlobalBlockQueue blockQueue;
@@ -240,7 +245,7 @@ public class FabricRegionManager extends RegionManager {
                 map.saveRegion(world, xxt2, xxt, zzt2, zzt); //
             }
             CuboidRegion currentPlotClear = new CuboidRegion(pos1.getBlockVector3(), pos2.getBlockVector3());
-            map.saveEntitiesOut(getWorld(world.getName()), getWorld(world.getName()).getChunk(x,z), currentPlotClear);
+            map.saveEntitiesOut(getWorld(world.getName()), getWorld(world.getName()).getChunk(x, z), currentPlotClear);
             AugmentedUtils.bypass(
                     ignoreAugment,
                     () -> ChunkManager.setChunkInPlotArea(null, new RunnableVal<ZeroedDelegateScopedQueueCoordinator>() {
@@ -286,7 +291,7 @@ public class FabricRegionManager extends RegionManager {
         final ServerLevel fabricWorld = getWorld(world);
         final List<Entity> entities;
         if (fabricWorld != null) {
-            entities = Lists.newArrayList(fabricWorld.getAllEntities().iterator());
+            entities = com.google.common.collect.Lists.newArrayList(fabricWorld.getAllEntities());
         } else {
             entities = new ArrayList<>();
         }
@@ -298,7 +303,9 @@ public class FabricRegionManager extends RegionManager {
         for (Entity entity : entities) {
             if (!(entity instanceof ServerPlayer)) {
                 GlobalPos location = GlobalPos.of(entity.level().dimension(), entity.blockPosition());
-                if (location.pos().getX() >= bx && location.pos().getX() <= tx && location.pos().getZ() >= bz && location.pos().getZ() <= tz) {
+                if (location.pos().getX() >= bx && location.pos().getX() <= tx && location.pos().getZ() >= bz && location
+                        .pos()
+                        .getZ() <= tz) {
                     if (entity.hasAttached(PlotSquaredDataAttachments.PS_TMP_TELEPORT)) {
                         continue;
                     }

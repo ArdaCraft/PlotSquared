@@ -1,6 +1,7 @@
 package com.plotsquared.fabric.schematic;
 
 import com.google.inject.Inject;
+import com.google.inject.Singleton;
 import com.plotsquared.core.inject.factory.ProgressSubscriberFactory;
 import com.plotsquared.core.queue.QueueCoordinator;
 import com.plotsquared.core.util.SchematicHandler;
@@ -8,6 +9,7 @@ import com.plotsquared.core.util.WorldUtil;
 import com.sk89q.jnbt.CompoundTag;
 import org.checkerframework.checker.nullness.qual.NonNull;
 
+@Singleton
 public class FabricSchematicHandler extends SchematicHandler {
 
     @Inject
@@ -17,7 +19,8 @@ public class FabricSchematicHandler extends SchematicHandler {
 
     @Override
     public boolean restoreTile(QueueCoordinator queue, CompoundTag ct, int x, int y, int z) {
-        return new StateWrapper(ct).restoreTag(queue.getWorld().getName(), x, y, z);
+        return queue.setTile(x,y,z,ct);
+       // return new StateWrapper(ct).restoreTag(queue.getWorld().getName(), x, y, z);
     }
 
 }

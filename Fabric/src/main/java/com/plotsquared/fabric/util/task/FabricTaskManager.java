@@ -1,6 +1,5 @@
 package com.plotsquared.fabric.util.task;
 
-import com.google.common.util.concurrent.Futures;
 import com.google.inject.Inject;
 import com.plotsquared.core.PlotSquared;
 import com.plotsquared.core.util.task.PlotSquaredTask;
@@ -10,22 +9,20 @@ import com.plotsquared.fabric.FabricPlatform;
 import org.checkerframework.checker.nullness.qual.NonNull;
 
 import java.util.concurrent.Callable;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 public class FabricTaskManager extends TaskManager {
 
-    private final FabricPlatform fabricMain;
+    private final FabricPlatform fabricPlatform;
     private final TaskTime.TimeConverter timeConverter;
-    public static final FabricTickListener fabricTickListener = new FabricTickListener();
 
     @Inject
     public FabricTaskManager(
-            final @NonNull FabricPlatform fabricMain,
+            final @NonNull FabricPlatform fabricPlatform,
             final TaskTime.@NonNull TimeConverter timeConverter
     ) {
-        this.fabricMain = fabricMain;
+        this.fabricPlatform = fabricPlatform;
         this.timeConverter = timeConverter;
     }
 
@@ -35,9 +32,9 @@ public class FabricTaskManager extends TaskManager {
             final @NonNull TaskTime taskTime
     ) {
         final long ticks = this.timeConverter.toTicks(taskTime);
-        final FabricPlotSquaredTask fabricPlotSquaredTask = new FabricPlotSquaredTask(runnable);
-        fabricPlotSquaredTask.runTaskTimer(this.fabricMain, ticks, ticks);
-        return fabricPlotSquaredTask;
+        final FabricPlotSquaredTask bukkitPlotSquaredTask = new FabricPlotSquaredTask(runnable);
+        bukkitPlotSquaredTask.runTaskTimer(this.fabricPlatform, ticks, ticks);
+        return bukkitPlotSquaredTask;
     }
 
     @Override
@@ -46,14 +43,14 @@ public class FabricTaskManager extends TaskManager {
             final @NonNull TaskTime taskTime
     ) {
         final long ticks = this.timeConverter.toTicks(taskTime);
-        final FabricPlotSquaredTask fabricPlotSquaredTask = new FabricPlotSquaredTask(runnable);
-        fabricPlotSquaredTask.runTaskTimerAsynchronously(this.fabricMain, ticks, ticks);
-        return fabricPlotSquaredTask;
+        final FabricPlotSquaredTask bukkitPlotSquaredTask = new FabricPlotSquaredTask(runnable);
+        bukkitPlotSquaredTask.runTaskTimerAsynchronously(this.fabricPlatform, ticks, ticks);
+        return bukkitPlotSquaredTask;
     }
 
     @Override
     public void taskAsync(final @NonNull Runnable runnable) {
-            new FabricPlotSquaredTask(runnable).runTaskAsynchronously(this.fabricMain);
+        new FabricPlotSquaredTask(runnable).runTaskAsynchronously(this.fabricPlatform);
     }
 
     @Override
@@ -66,12 +63,12 @@ public class FabricTaskManager extends TaskManager {
 
     @Override
     public <T> Future<T> callMethodSync(final @NonNull Callable<T> method) {
-        return Futures.submit(method, Executors.newSingleThreadExecutor());
+        return fabricPlatform.getScheduler().callSyncMethod(this.fabricPlatform, method);
     }
 
     @Override
     public void task(final @NonNull Runnable runnable) {
-        new FabricPlotSquaredTask(runnable).runTask();
+        new FabricPlotSquaredTask(runnable).runTask(this.fabricPlatform);
     }
 
     @Override
@@ -80,7 +77,7 @@ public class FabricTaskManager extends TaskManager {
             final @NonNull TaskTime taskTime
     ) {
         final long delay = this.timeConverter.toTicks(taskTime);
-        new FabricPlotSquaredTask(runnable).runTaskLater(this.fabricMain, delay);
+        new FabricPlotSquaredTask(runnable).runTaskLater(this.fabricPlatform, delay);
     }
 
     @Override
@@ -89,7 +86,7 @@ public class FabricTaskManager extends TaskManager {
             final @NonNull TaskTime taskTime
     ) {
         final long delay = this.timeConverter.toTicks(taskTime);
-        new FabricPlotSquaredTask(runnable).runTaskLaterAsynchronously(this.fabricMain, delay);
+        new FabricPlotSquaredTask(runnable).runTaskLaterAsynchronously(this.fabricPlatform, delay);
     }
 
 }

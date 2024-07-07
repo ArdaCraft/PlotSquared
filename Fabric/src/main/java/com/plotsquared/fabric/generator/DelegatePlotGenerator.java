@@ -28,8 +28,11 @@ import com.plotsquared.core.util.MathMan;
 import com.plotsquared.fabric.util.FabricUtil;
 import com.sk89q.worldedit.world.biome.BiomeType;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.WorldGenRegion;
 import net.minecraft.world.level.chunk.ChunkGenerator;
+import net.minecraft.world.level.chunk.ChunkStatus;
 
+import java.util.List;
 import java.util.Random;
 
 final class DelegatePlotGenerator extends IndependentPlotGenerator {
@@ -68,16 +71,13 @@ final class DelegatePlotGenerator extends IndependentPlotGenerator {
         int chunkX = min.getX() >> 4;
         int chunkZ = min.getZ() >> 4;
         Random random = new Random(MathMan.pair((short) chunkX, (short) chunkZ));
-        if (chunkGenerator instanceof FabricPlotGenerator fabricPlotGenerator) {
-            try {
-                fabricPlotGenerator.generateChunkData(world, random, chunkX, chunkZ);
-                return;
-            } catch (Throwable ignored) {
-            }
-            //for (BlockPopulator populator : fabricPlotGenerator.getDefaultPopulators(world)) {
-                new BlockStatePopulator(fabricPlotGenerator.getPlotGenerator()).populate(world, random, world.getChunk(chunkX, chunkZ));
-           // }
-        }
+       try {
+           if(chunkGenerator instanceof FabricPlotGenerator fabricPlotGenerator) {
+               fabricPlotGenerator.checkLoaded(world);
+           }
+           return;
+       } catch (Throwable ignored) {
+       }
     }
 
 }

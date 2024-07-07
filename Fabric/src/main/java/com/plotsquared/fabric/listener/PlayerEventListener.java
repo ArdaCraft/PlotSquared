@@ -19,6 +19,8 @@
 package com.plotsquared.fabric.listener;
 
 import com.google.common.base.Charsets;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.google.inject.Inject;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.plotsquared.core.PlotSquared;
@@ -77,8 +79,8 @@ import com.plotsquared.fabric.listener.event.HandleMoveVehicleCallback;
 import com.plotsquared.fabric.listener.event.HandlePlayerMoveCallback;
 import com.plotsquared.fabric.listener.event.LecternTakeButtonCallback;
 import com.plotsquared.fabric.listener.event.ServerPlayerTeleportToCallback;
-import com.plotsquared.fabric.listener.mixin.EntityMixin;
 import com.plotsquared.fabric.player.FabricPlayer;
+import com.plotsquared.fabric.player.FabricPlayerManager;
 import com.plotsquared.fabric.util.FabricEntityUtil;
 import com.plotsquared.fabric.util.FabricUtil;
 import com.sk89q.worldedit.WorldEdit;
@@ -86,24 +88,18 @@ import com.sk89q.worldedit.fabric.FabricAdapter;
 import com.sk89q.worldedit.world.block.BlockType;
 import com.sk89q.worldedit.world.entity.EntityType;
 import com.sk89q.worldedit.world.entity.EntityTypes;
-import net.fabricmc.fabric.api.dimension.v1.FabricDimensions;
 import net.fabricmc.fabric.api.entity.event.v1.ServerEntityWorldChangeEvents;
-import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
-import net.fabricmc.fabric.api.networking.v1.ServerLoginConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.tag.convention.v1.TagUtil;
-import net.fabricmc.fabric.impl.dimension.FabricDimensionInternals;
-import net.fabricmc.fabric.mixin.event.interaction.ServerPlayerInteractionManagerMixin;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.minimessage.tag.Tag;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 import net.kyori.adventure.text.minimessage.tag.standard.StandardTags;
-import net.minecraft.client.gui.screens.inventory.LecternScreen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;
@@ -116,12 +112,9 @@ import net.minecraft.network.protocol.game.ServerboundContainerClosePacket;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.level.ServerEntity;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.server.level.ServerPlayerGameMode;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
-import net.minecraft.server.network.ServerLoginPacketListenerImpl;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
@@ -142,7 +135,6 @@ import net.minecraft.world.item.BucketItem;
 import net.minecraft.world.item.DyeItem;
 import net.minecraft.world.item.FireworkRocketItem;
 import net.minecraft.world.item.FireworkStarItem;
-import net.minecraft.world.item.FlintAndSteelItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -150,23 +142,14 @@ import net.minecraft.world.item.SpawnEggItem;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
-import net.minecraft.world.level.block.BaseFireBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.EndGatewayBlock;
-import net.minecraft.world.level.block.EndPortalBlock;
-import net.minecraft.world.level.block.FireBlock;
 import net.minecraft.world.level.block.SignBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.world.level.block.entity.TheEndGatewayBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.pattern.BlockInWorld;
 import net.minecraft.world.level.block.state.pattern.BlockPattern;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
-import net.minecraft.world.level.gameevent.GameEvent;
-import net.minecraft.world.level.gameevent.GameEventDispatcher;
-import net.minecraft.world.level.portal.PortalForcer;
-import net.minecraft.world.level.portal.PortalInfo;
 import net.minecraft.world.level.portal.PortalShape;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
@@ -187,16 +170,17 @@ import xyz.nucleoid.stimuli.event.player.PlayerChatEvent;
 import xyz.nucleoid.stimuli.event.player.PlayerCommandEvent;
 import xyz.nucleoid.stimuli.event.player.PlayerInventoryActionEvent;
 import xyz.nucleoid.stimuli.event.world.EndPortalOpenEvent;
-import xyz.nucleoid.stimuli.event.world.NetherPortalOpenEvent;
-import xyz.nucleoid.stimuli.mixin.world.EnderEyeItemMixin;
-import xyz.nucleoid.stimuli.mixin.world.NetherPortalMixin;
 
+import java.io.IOException;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Scanner;
 import java.util.Set;
 import java.util.UUID;
 
@@ -291,7 +275,7 @@ public class PlayerEventListener {
         PlayerBlockBreakEvents.AFTER.register(this::afterBlockBreak);
         UseBlockCallback.EVENT.register(PlayerEventListener::interact);
         Stimuli.global().listen(PlayerCommandEvent.EVENT, PlayerEventListener::onPlayerCommand);
-        ServerLoginConnectionEvents.INIT.register(PlayerEventListener::onLoginInit);
+        ServerPlayConnectionEvents.INIT.register(PlayerEventListener::onLoginInit);
         Stimuli.global().listen(BlockUseEvent.EVENT, this::onHangingPlace);
         Stimuli.global().listen(EntitySpawnEvent.EVENT, entity -> {
             Location location = FabricUtil.adapt(GlobalPos.of(entity.level().dimension(), entity.blockPosition()));
@@ -314,31 +298,36 @@ public class PlayerEventListener {
         EntityHandleInsidePortalCallback.EVENT.register(this::onPortalEnter);
         LecternTakeButtonCallback.EVENT.register(this::onPlayerTakeLecternBook);
 
-        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
-            final ServerPlayer player = handler.player;
-            PlotSquared.platform().playerManager().removePlayer(player.getUUID());
-            final PlotPlayer<ServerPlayer> pp = FabricUtil.adapt(player);
+        ServerEntityEvents.ENTITY_LOAD.register((entity, world) -> {
+            if(entity instanceof ServerPlayer serverPlayer) {
+                final ServerPlayer player = serverPlayer;
+                PlotSquared.platform().playerManager().removePlayer(player.getUUID());
+                final PlotPlayer<ServerPlayer> pp = ((FabricPlayerManager) PlotSquared.platform().playerManager()).getPlayer(
+                        player);
 
-            // we're stripping the country code as we don't want to differ between countries
-            //pp.setLocale(Locale.forLanguageTag(player.getLocale().substring(0, 2)));
+                // we're stripping the country code as we don't want to differ between countries
+                //pp.setLocale(Locale.forLanguageTag(player.getLocale().substring(0, 2)));
 
-            Location location = pp.getLocation();
-            PlotArea area = location.getPlotArea();
-            if (area != null) {
-                Plot plot = area.getPlot(location);
-                if (plot != null) {
-                    plotListener.plotEntry(pp, plot);
+                Location location = pp.getLocation();
+                PlotArea area = location.getPlotArea();
+                if (area != null) {
+                    Plot plot = area.getPlot(location);
+                    if (plot != null) {
+                        plotListener.plotEntry(pp, plot);
+                    }
                 }
-            }
-            // Async
-            TaskManager.runTaskLaterAsync(() -> {
-                /* TODO CHECK ON THIS */
+                // Async
+                TaskManager.runTaskLaterAsync(() -> {
+                    /* TODO CHECK ON THIS */
                 /*if (!player.hasPlayedBefore() && player.isLocalPlayer()) {
                     player.saveData();
                 }*/
-                this.eventDispatcher.doJoinTask(pp);
-            }, TaskTime.seconds(1L));
+                    this.eventDispatcher.doJoinTask(pp);
+                }, TaskTime.seconds(1L));
+            }
         });
+
+
 
         ServerPlayConnectionEvents.DISCONNECT.register(this::onLeave);
 
@@ -350,6 +339,10 @@ public class PlayerEventListener {
 
 
         HandlePlayerMoveCallback.EVENT.register((serverboundMovePlayerPacket, serverPlayer) -> {
+            if(!serverboundMovePlayerPacket.hasPosition()) {
+                return InteractionResult.PASS;
+            }
+
             BlockPos fromBlockPos = new BlockPos(
                     serverPlayer.getBlockX(),
                     serverPlayer.getBlockY(),
@@ -360,8 +353,6 @@ public class PlayerEventListener {
                     (int) serverboundMovePlayerPacket.getY(0.0),
                     (int) serverboundMovePlayerPacket.getZ(0.0)
             );
-
-
             GlobalPos from = GlobalPos.of(serverPlayer.serverLevel().dimension(), fromBlockPos);
             GlobalPos to = GlobalPos.of(serverPlayer.serverLevel().dimension(), toBlockPos);
             int x2;
@@ -793,7 +784,7 @@ public class PlayerEventListener {
             return;
         }*/
             if (!this.plotAreaManager
-                    .hasPlotArea(serverPlayer.serverLevel().serverLevelData.getLevelName())) {
+                    .hasPlotArea(serverPlayer.serverLevel().dimension().location().getPath().toString())) {
                 return InteractionResult.SUCCESS;
             }
 
@@ -1048,7 +1039,7 @@ public class PlayerEventListener {
         Location location = plotPlayer.getLocation();
         PlotArea area = location.getPlotArea();
         if (area == null) {
-            return InteractionResult.FAIL;
+            return InteractionResult.PASS;
         }
         String[] parts = msg.split(" ");
         Plot plot = plotPlayer.getCurrentPlot();
@@ -1103,20 +1094,36 @@ public class PlayerEventListener {
         return InteractionResult.PASS;
     }
 
-    private static void onLoginInit(ServerLoginPacketListenerImpl handler, MinecraftServer server) {
+    private static void onLoginInit(ServerGamePacketListenerImpl handler, MinecraftServer server) {
         final UUID uuid;
         if (Settings.UUID.OFFLINE) {
             if (Settings.UUID.FORCE_LOWERCASE) {
-                uuid = UUID.nameUUIDFromBytes(("OfflinePlayer:" + handler
-                        .getUserName()
+                uuid = UUID.nameUUIDFromBytes(("OfflinePlayer:" + handler.player.getName().getString()
                         .toLowerCase()).getBytes(Charsets.UTF_8));
             } else {
-                uuid = UUID.nameUUIDFromBytes(("OfflinePlayer:" + handler.getUserName()).getBytes(Charsets.UTF_8));
+                uuid = UUID.nameUUIDFromBytes(("OfflinePlayer:" + handler.getPlayer().getName().getString()).getBytes(Charsets.UTF_8));
             }
         } else {
-            uuid = server.getProfileCache().get(handler.getUserName()).get().getId();
+            uuid = UUID.fromString(handler.player.getStringUUID());
+            //server.getProfileRepository().findProfilesByNames().get(handler.getUserName()).get().getId();
         }
-        PlotSquared.get().getImpromptuUUIDPipeline().storeImmediately(handler.getUserName(), uuid);
+        PlotSquared.get().getImpromptuUUIDPipeline().storeImmediately(handler.player.getName().getString(), uuid);
+    }
+
+    public static String getUUID(String playerName) throws IOException {
+        String url = "https://api.mojang.com/users/profiles/minecraft/" + playerName;
+
+        HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+        connection.setRequestMethod("GET");
+        connection.setRequestProperty("User-Agent", "Mozilla/5.0");
+
+        // Reading the response
+        Scanner scanner = new Scanner(connection.getInputStream());
+        String response = scanner.useDelimiter("\\A").next();
+        scanner.close();
+
+        JsonObject jsonObject = JsonParser.parseString(response).getAsJsonObject();
+        return jsonObject.get("id").getAsString();
     }
 
     public void afterBlockBreak(
@@ -2029,7 +2036,7 @@ public class PlayerEventListener {
 
     public InteractionResult onEndPortalCreation(UseOnContext useOnContext, BlockPattern.BlockPatternMatch blockPatternMatch) {
         String world =
-                useOnContext.getPlayer().getServer().getLevel(useOnContext.getLevel().dimension()).serverLevelData.getLevelName();
+                useOnContext.getPlayer().getServer().getLevel(useOnContext.getLevel().dimension()).dimension().location().getPath().toString();
         if (PlotSquared.get().getPlotAreaManager().getPlotAreasSet(world).size() == 0) {
             return InteractionResult.FAIL;
         }

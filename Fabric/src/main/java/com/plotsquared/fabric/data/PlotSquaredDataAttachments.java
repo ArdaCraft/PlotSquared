@@ -22,13 +22,14 @@ public class PlotSquaredDataAttachments {
     static {
         PLOT_DATA = AttachmentRegistry.create(new ResourceLocation("plotsquared", "plot_data"));
         P2 = AttachmentRegistry.create(new ResourceLocation("plotsquared", "p2"));
-        SHULKER_PLOT = AttachmentRegistry.create(new ResourceLocation("plotsquared", "shulkerPlot"));
+        SHULKER_PLOT = AttachmentRegistry.create(new ResourceLocation("plotsquared", "shulkerplot"));
         PS_CUSTOM_SPAWNED = AttachmentRegistry.create(new ResourceLocation("plotsquared", "ps_custom_spawned"));
         KEEP = AttachmentRegistry.create(new ResourceLocation("plotsquared", "keep"));
         PS_TMP_TELEPORT = AttachmentRegistry.create(new ResourceLocation("plotsquared", "ps_tmp_teleport"));
         PLOT = AttachmentRegistry.create(new ResourceLocation("plotsquared", "plot"));
     }
 
+    public PlotSquaredDataAttachments() {}
 
 
 }

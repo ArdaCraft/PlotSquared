@@ -17,12 +17,14 @@ import com.plotsquared.fabric.player.FabricPlayer;
 import com.plotsquared.fabric.player.FabricPlayerManager;
 import com.sk89q.worldedit.fabric.FabricAdapter;
 import com.sk89q.worldedit.math.BlockVector2;
+import com.sk89q.worldedit.util.report.StackTraceReport;
 import com.sk89q.worldedit.world.biome.BiomeType;
 import com.sk89q.worldedit.world.block.BlockCategories;
 import com.sk89q.worldedit.world.block.BlockState;
 import com.sk89q.worldedit.world.block.BlockType;
 import com.sk89q.worldedit.world.block.BlockTypes;
 import com.sk89q.worldedit.world.entity.EntityTypes;
+import jdk.jfr.StackTrace;
 import net.kyori.adventure.platform.fabric.FabricAudiences;
 import net.kyori.adventure.platform.fabric.FabricServerAudiences;
 import net.kyori.adventure.text.minimessage.MiniMessage;
@@ -70,6 +72,7 @@ import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.entity.vehicle.AbstractMinecart;
 import net.minecraft.world.entity.vehicle.Boat;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.FallingBlock;
 import net.minecraft.world.level.block.SignBlock;
 import net.minecraft.world.level.block.WallSignBlock;
@@ -130,7 +133,7 @@ public class FabricUtil extends WorldUtil {
     public static @NonNull Location adapt(final @NotNull GlobalPos globalPos) {
         return Location
                 .at(
-                        com.plotsquared.fabric.util.FabricWorld.of(globalPos.dimension()),
+                        FabricWorld.of(globalPos.dimension().location().getPath()),
                         MathMan.roundInt(globalPos.pos().getX()),
                         MathMan.roundInt(globalPos.pos().getY()),
                         MathMan.roundInt(globalPos.pos().getZ())
@@ -145,15 +148,16 @@ public class FabricUtil extends WorldUtil {
      * @return PlotSquared location
      */
     public static @NonNull Location adaptComplete(final @NonNull GlobalPos location, float yaw, float pitch) {
-        return Location
+        Location location1 = Location
                 .at(
-                        com.plotsquared.fabric.util.FabricWorld.of(location.dimension()),
+                        FabricWorld.of(location.dimension().location().getPath()),
                         MathMan.roundInt(location.pos().getX()),
                         MathMan.roundInt(location.pos().getY()),
                         MathMan.roundInt(location.pos().getZ()),
                         yaw,
                         pitch
                 );
+        return location1;
     }
 
     /**
@@ -178,7 +182,7 @@ public class FabricUtil extends WorldUtil {
      */
     public static @Nullable ServerLevel getWorld(final @NonNull String string) {
         for (ServerLevel serverLevel : FabricPlatform.SERVER.getAllLevels()) {
-            if (serverLevel.serverLevelData.getLevelName().equals(string)) {
+            if (serverLevel.dimension().location().getPath().equals(string)) {
                 return serverLevel;
             }
         }
@@ -351,11 +355,7 @@ public class FabricUtil extends WorldUtil {
         ensureLoaded(location.getWorldName(), location.getX(), location.getZ(), chunk -> {
             PlotArea area = location.getPlotArea();
             final ServerLevel world = getWorld(location.getWorldName());
-            BlockPos signBlockPos = new BlockPos(
-                    location.getX(),
-                    location.getY(),
-                    location.getZ()
-            );
+            BlockPos signBlockPos = new BlockPos(location.getX(), location.getY(), location.getZ());
             final net.minecraft.world.level.block.state.BlockState blockstate = world.getBlockState(signBlockPos);
             final Block block = blockstate.getBlock();
             if (block instanceof WallSignBlock wallSignBlock) {
