@@ -14,51 +14,33 @@ import com.plotsquared.core.plot.world.PlotAreaManager;
 import com.plotsquared.core.util.EventDispatcher;
 import com.plotsquared.core.util.MathMan;
 import com.plotsquared.core.util.WorldUtil;
-import com.plotsquared.fabric.listener.event.ServerPlayerTeleportToCallback;
 import com.plotsquared.fabric.util.FabricUtil;
 import com.sk89q.worldedit.extension.platform.Actor;
 import com.sk89q.worldedit.fabric.FabricAdapter;
 import com.sk89q.worldedit.world.item.ItemType;
 import com.sk89q.worldedit.world.item.ItemTypes;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.kyori.adventure.audience.Audience;
 import net.kyori.adventure.key.Key;
-import net.kyori.adventure.platform.fabric.FabricAudiences;
 import net.kyori.adventure.sound.Sound;
 import net.kyori.adventure.sound.SoundStop;
 import net.luckperms.api.LuckPermsProvider;
-import net.minecraft.client.renderer.item.CompassItemPropertyFunction;
-import net.minecraft.client.resources.sounds.SoundEventRegistration;
-import net.minecraft.client.sounds.SoundManager;
-import net.minecraft.core.BlockPos;
 import net.minecraft.core.GlobalPos;
-import net.minecraft.core.Position;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.game.ClientboundGameEventPacket;
+import net.minecraft.network.protocol.game.ClientboundSetTimePacket;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.server.commands.SpectateCommand;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.server.level.ServerPlayerGameMode;
-import net.minecraft.server.network.ServerGamePacketListenerImpl;
-import net.minecraft.sounds.Music;
-import net.minecraft.sounds.Musics;
-import net.minecraft.sounds.SoundEvent;
-import net.minecraft.sounds.SoundEvents;
-import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.effect.MobEffect;
-import net.minecraft.world.effect.MobEffectCategory;
-import net.minecraft.world.effect.MobEffectUtil;
-import net.minecraft.world.effect.MobEffects;
-import net.minecraft.world.item.CompassItem;
-import net.minecraft.world.item.Items;
+import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.GameType;
-import net.minecraft.world.level.block.SoundType;
+import net.minecraft.world.phys.Vec3;
 import org.checkerframework.checker.index.qual.NonNegative;
 import org.checkerframework.checker.nullness.qual.NonNull;
 
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ThreadLocalRandom;
 
 import static com.sk89q.worldedit.world.gamemode.GameModes.ADVENTURE;
 import static com.sk89q.worldedit.world.gamemode.GameModes.CREATIVE;
@@ -70,6 +52,9 @@ public class FabricPlayer extends PlotPlayer<ServerPlayer> {
     private static boolean CHECK_EFFECTIVE = true;
     public final ServerPlayer player;
     private String name;
+
+    public PlotWeather weather = PlotWeather.OFF;
+    public long time = Long.MIN_VALUE;
 
     /**
      * @param plotAreaManager   PlotAreaManager instance
@@ -90,6 +75,73 @@ public class FabricPlayer extends PlotPlayer<ServerPlayer> {
         if (realPlayer) {
             super.populatePersistentMetaMap();
         }
+
+
+        ServerTickEvents.END_WORLD_TICK.register(server -> {
+            //handle weather
+            switch (weather) {
+                case CLEAR -> {
+                   // this.player.connection.send(new ClientboundGameEventPacket(ClientboundGameEventPacket.STOP_RAINING, 0.0F));
+                    this.player.connection.send(new ClientboundGameEventPacket(
+                            ClientboundGameEventPacket.RAIN_LEVEL_CHANGE,
+                            0.0F
+                    ));
+                }
+                case RAIN -> {
+                  //  this.player.connection.send(new ClientboundGameEventPacket(ClientboundGameEventPacket.START_RAINING, 0.0F));
+                    this.player.connection.send(new ClientboundGameEventPacket(
+                            ClientboundGameEventPacket.RAIN_LEVEL_CHANGE,
+                            1.0F
+                    ));
+                }
+                case WORLD -> {
+                    //if (this.player.serverLevel().isRaining()) {
+                        /*this.player.connection.send(new ClientboundGameEventPacket(
+                                ClientboundGameEventPacket.START_RAINING,
+                                0.0F
+                        ));*/
+                        this.player.connection.send(new ClientboundGameEventPacket(ClientboundGameEventPacket.RAIN_LEVEL_CHANGE
+                                , this.player.serverLevel().rainLevel));
+                   // } else {
+                        /*this.player.connection.send(new ClientboundGameEventPacket(
+                                ClientboundGameEventPacket.STOP_RAINING,
+                                0.0F
+                        ));*/
+                        /*this.player.connection.send(new ClientboundGameEventPacket(ClientboundGameEventPacket.RAIN_LEVEL_CHANGE
+                                , this.player.serverLevel().rainLevel));*/
+                    //}
+                }
+                default -> {
+                    /*if (this.player.serverLevel().isRaining()) {
+                        /*this.player.connection.send(new ClientboundGameEventPacket(
+                                ClientboundGameEventPacket.START_RAINING,
+                                0.0F
+                        ));*/
+                        this.player.connection.send(new ClientboundGameEventPacket(ClientboundGameEventPacket.RAIN_LEVEL_CHANGE
+                                , this.player.serverLevel().rainLevel));
+                    /*} else {
+                       /* this.player.connection.send(new ClientboundGameEventPacket(
+                                ClientboundGameEventPacket.STOP_RAINING,
+                                0.0F
+                        ));*/
+                        /*this.player.connection.send(new ClientboundGameEventPacket(ClientboundGameEventPacket.RAIN_LEVEL_CHANGE
+                                , this.player.serverLevel().rainLevel));
+                    }*/
+                    //do nothing as this is PlotWeather.OFF
+                }
+            }
+            //handle time
+            if (time != Long.MIN_VALUE && time != Long.MAX_VALUE) {
+                this.player.connection.send(new ClientboundSetTimePacket(time, time, true));
+
+            } else {
+                this.player.connection.send(new ClientboundSetTimePacket(
+                        this.player.serverLevel().getGameTime(),
+                        this.player.serverLevel().dayTime(),
+                        this.player.serverLevel().getGameRules().getBoolean(GameRules.RULE_DAYLIGHT)
+                ));
+            }
+        });
     }
 
     @Override
@@ -226,9 +278,9 @@ public class FabricPlayer extends PlotPlayer<ServerPlayer> {
 
     @Override
     public void teleport(final @NonNull Location location, final @NonNull TeleportCause cause) {
-        if (!WorldUtil.isValidLocation(location)) {
+        /*if (!WorldUtil.isValidLocation(location)) {
             return;
-        }
+        }*/
         player.teleportTo(FabricUtil.getWorld(location.getWorldName()), location.getX() + 0.5, location.getY(),
                 location.getZ() + 0.5, location.getYaw(), location.getPitch()
         );
@@ -262,17 +314,10 @@ public class FabricPlayer extends PlotPlayer<ServerPlayer> {
 
     @Override
     public void setWeather(final @NonNull PlotWeather weather) {
-        /* TODO COME UP WITH PACKET SENDING IMPLEMENTATION */
-        /*
-        switch (weather) {
-            case CLEAR -> this.player.setPlayerWeather(WeatherType.CLEAR);
-            case RAIN -> this.player.setPlayerWeather(WeatherType.DOWNFALL);
-            case WORLD -> this.player.resetPlayerWeather();
-            default -> {
-                //do nothing as this is PlotWeather.OFF
-            }
-        }*/
+        this.weather = weather;
+
     }
+
 
     @Override
     public com.sk89q.worldedit.world.gamemode.GameMode getGameMode() {
@@ -299,23 +344,21 @@ public class FabricPlayer extends PlotPlayer<ServerPlayer> {
 
     @Override
     public void setTime(final long time) {
-        /*
-        if (time != Long.MAX_VALUE) {
-            this.player.setPlayerTime(time, false);
-        } else {
-            this.player.resetPlayerTime();
-        }
-        */
+        this.time = time;
     }
 
     @Override
     public boolean getFlight() {
-        return player.getAbilities().mayfly;
+        return player.getAbilities().flying;
     }
 
     @Override
     public void setFlight(boolean fly) {
         this.player.getAbilities().mayfly = fly;
+        if(!fly) {
+            this.player.getAbilities().flying = false;
+        }
+        player.onUpdateAbilities();
     }
 
     @Override
@@ -335,8 +378,11 @@ public class FabricPlayer extends PlotPlayer<ServerPlayer> {
         }
 
         try {
-            Sound sound = Sound.sound(Key.key(id.getId().replace("music_disc_",
-                            "music_disc.")), Sound.Source.MUSIC, 1f, 1f);
+            Sound sound = Sound.sound(Key.key(id.getId().replace(
+                    "music_disc_",
+                    "music_disc."
+            )), Sound.Source.MUSIC, 1f, 1f);
+            /* TODO UNCOMMENT BEFORE RELEASE */
             //player.playSound(sound, Sound.Emitter.self());
         } catch (Exception e) {
             e.printStackTrace();

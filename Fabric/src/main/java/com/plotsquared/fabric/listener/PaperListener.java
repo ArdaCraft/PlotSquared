@@ -19,24 +19,62 @@
 package com.plotsquared.fabric.listener;
 
 import com.google.inject.Inject;
+import com.mojang.brigadier.ParseResults;
+import com.mojang.brigadier.StringReader;
+import com.mojang.brigadier.context.StringRange;
+import com.mojang.brigadier.suggestion.Suggestion;
+import com.mojang.brigadier.suggestion.Suggestions;
+import com.mojang.brigadier.suggestion.SuggestionsBuilder;
+import com.plotsquared.core.command.Command;
+import com.plotsquared.core.command.MainCommand;
+import com.plotsquared.core.configuration.Settings;
 import com.plotsquared.core.location.Location;
+import com.plotsquared.core.player.PlotPlayer;
 import com.plotsquared.core.plot.Plot;
 import com.plotsquared.core.plot.PlotArea;
+import com.plotsquared.core.plot.flag.FlagContainer;
+import com.plotsquared.core.plot.flag.implementations.DoneFlag;
 import com.plotsquared.core.plot.flag.implementations.TileDropFlag;
+import com.plotsquared.core.plot.flag.types.BooleanFlag;
 import com.plotsquared.core.plot.world.PlotAreaManager;
+import com.plotsquared.fabric.listener.event.EntityPathfindEvent;
+import com.plotsquared.fabric.listener.event.MobSpawnEvent;
+import com.plotsquared.fabric.listener.event.ReceiveCommandSuggestionsPacketEvent;
+import com.plotsquared.fabric.util.CommandSuggestionProvider;
 import com.plotsquared.fabric.util.FabricUtil;
+import com.sk89q.worldedit.command.util.SuggestionHelper;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.commands.synchronization.SuggestionProviders;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.GlobalPos;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.protocol.game.ClientboundCommandSuggestionsPacket;
+import net.minecraft.network.protocol.game.ServerboundCommandSuggestionPacket;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.DifficultyInstance;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.InteractionResultHolder;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.MobSpawnType;
+import net.minecraft.world.entity.SpawnGroupData;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.LevelReader;
+import net.minecraft.world.level.ServerLevelAccessor;
 import net.minecraft.world.level.block.state.BlockState;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import xyz.nucleoid.stimuli.Stimuli;
 import xyz.nucleoid.stimuli.event.block.BlockDropItemsEvent;
 
+import java.awt.*;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
+import java.util.regex.Pattern;
 
 /**
  * Events specific to Paper. Some toit nups here
@@ -51,12 +89,19 @@ public class PaperListener {
     public PaperListener(final @NonNull PlotAreaManager plotAreaManager) {
         this.plotAreaManager = plotAreaManager;
         Stimuli.global().listen(BlockDropItemsEvent.EVENT, this::onBlockDropItems);
+        EntityPathfindEvent.EVENT.register(this::onEntityPathfind);
+        MobSpawnEvent.EVENT.register(this::onPreCreatureSpawnEvent);
+        ReceiveCommandSuggestionsPacketEvent.EVENT.register(this::onAsyncTabCompletion);
+
+
     }
 
 
-    public InteractionResultHolder<List<ItemStack>> onBlockDropItems(Entity entity, ServerLevel serverLevel, BlockPos blockPos,
-    BlockState blockState,
-                                                    List<ItemStack> dropStacks) {
+    public InteractionResultHolder<List<ItemStack>> onBlockDropItems(
+            Entity entity, ServerLevel serverLevel, BlockPos blockPos,
+            BlockState blockState,
+            List<ItemStack> dropStacks
+    ) {
         Location location = FabricUtil.adapt(GlobalPos.of(serverLevel.dimension(), blockPos));
         PlotArea area = location.getPlotArea();
         if (area == null) {
@@ -64,223 +109,225 @@ public class PaperListener {
         }
         Plot plot = area.getPlot(location);
         if (plot != null) {
-            if(plot.getFlag(TileDropFlag.class)) {
+            if (plot.getFlag(TileDropFlag.class)) {
                 return InteractionResultHolder.pass(dropStacks);
             }
             return InteractionResultHolder.fail(List.of());
         }
         return InteractionResultHolder.pass(dropStacks);
     }
-/*
-    public void onEntityPathfind() {
+
+    public InteractionResult onEntityPathfind(Entity entity, BlockPos blockPos, LevelReader levelReader) {
+
         if (!Settings.Paper_Components.ENTITY_PATHING) {
-            return;
+            return InteractionResult.PASS;
         }
-        Location toLoc = FabricUtil.adapt(event.getLoc());
-        Location fromLoc = FabricUtil.adapt(event.getEntity().getLocation());
+        Location toLoc = FabricUtil.adapt(GlobalPos.of(entity.level().dimension(), blockPos));
+        Location fromLoc = FabricUtil.adapt(GlobalPos.of(entity.level().dimension(), entity.blockPosition()));
         PlotArea tarea = toLoc.getPlotArea();
         if (tarea == null) {
-            return;
+            return InteractionResult.PASS;
         }
         PlotArea farea = fromLoc.getPlotArea();
         if (farea == null) {
-            return;
+            return InteractionResult.PASS;
         }
         if (tarea != farea) {
-            event.setCancelled(true);
-            return;
+            return InteractionResult.FAIL;
         }
         Plot tplot = toLoc.getPlot();
         Plot fplot = fromLoc.getPlot();
         if (tplot == null ^ fplot == null) {
-            event.setCancelled(true);
-            return;
+            return InteractionResult.FAIL;
         }
         if (tplot == null || tplot.getId().hashCode() == fplot.getId().hashCode()) {
-            return;
+            return InteractionResult.PASS;
         }
         if (fplot.isMerged() && fplot.getConnectedPlots().contains(fplot)) {
-            return;
+            return InteractionResult.PASS;
         }
-        event.setCancelled(true);
+        return InteractionResult.FAIL;
     }
-
-    @EventHandler
-    public void onEntityPathfind(SlimePathfindEvent event) {
+    /*
+    public InteractionResult onSlimePathfind(Entity entity, BlockPos blockPos, LevelReader levelReader) {
         if (!Settings.Paper_Components.ENTITY_PATHING) {
-            return;
+            return InteractionResult.PASS;
         }
-        Slime slime = event.getEntity();
+        Slime slime = (Slime) entity;
 
-        Block b = slime.getTargetBlockExact(4);
+        BlockPos b = slime.tra;
         if (b == null) {
-            return;
+            return InteractionResult.PASS;
         }
 
-        Location toLoc = BukkitUtil.adapt(b.getLocation());
-        Location fromLoc = BukkitUtil.adapt(event.getEntity().getLocation());
+        Location toLoc = FabricUtil.adapt(GlobalPos.of(entity.level().dimension(), blockPos));
+        Location fromLoc = FabricUtil.adapt(GlobalPos.of(entity.level().dimension(), entity.blockPosition()));
         PlotArea tarea = toLoc.getPlotArea();
         if (tarea == null) {
-            return;
+            return InteractionResult.PASS;
         }
         PlotArea farea = fromLoc.getPlotArea();
         if (farea == null) {
-            return;
+            return InteractionResult.PASS;
         }
 
         if (tarea != farea) {
-            event.setCancelled(true);
-            return;
+            return InteractionResult.FAIL;
         }
         Plot tplot = toLoc.getPlot();
         Plot fplot = fromLoc.getPlot();
         if (tplot == null ^ fplot == null) {
-            event.setCancelled(true);
-            return;
+            return InteractionResult.FAIL;
         }
         if (tplot == null || tplot.getId().hashCode() == fplot.getId().hashCode()) {
-            return;
+            return InteractionResult.PASS;
         }
         if (fplot.isMerged() && fplot.getConnectedPlots().contains(fplot)) {
-            return;
+            return InteractionResult.PASS;
         }
-        event.setCancelled(true);
-    }
+        return InteractionResult.FAIL;
+    }*/
 
-    @EventHandler
-    public void onPreCreatureSpawnEvent(PreCreatureSpawnEvent event) {
+    public InteractionResult onPreCreatureSpawnEvent(
+            ServerLevelAccessor serverLevelAccessor,
+            DifficultyInstance difficultyInstance,
+            MobSpawnType mobSpawnType,
+            SpawnGroupData spawnGroupData,
+            CompoundTag compoundTag,
+            Mob mob
+    ) {
         if (!Settings.Paper_Components.CREATURE_SPAWN) {
-            return;
+            return InteractionResult.PASS;
         }
-        Location location = BukkitUtil.adapt(event.getSpawnLocation());
+        Location location = FabricUtil.adapt(GlobalPos.of(mob.level().dimension(), mob.blockPosition()));
         PlotArea area = location.getPlotArea();
         if (area == null) {
-            return;
+            return InteractionResult.PASS;
         }
         // Armour-stands are handled elsewhere and should not be handled by area-wide entity-spawn options
-        if (event.getType() == EntityType.ARMOR_STAND) {
-            return;
+        if (mob.getType() == EntityType.ARMOR_STAND) {
+            return InteractionResult.PASS;
         }
         // If entities are spawning... the chunk should be loaded?
-        Entity[] entities = event.getSpawnLocation().getChunk().getEntities();
+        Entity[] entities =
+                FabricUtil.getEntitiesInChunk(
+                        serverLevelAccessor.getLevel(),
+                        serverLevelAccessor.getLevel().getChunkAt(mob.blockPosition())
+                ).toArray(new Entity[0]);
         if (entities.length >= Settings.Chunk_Processor.MAX_ENTITIES) {
-            event.setShouldAbortSpawn(true);
-            event.setCancelled(true);
-            return;
+            ((Entity) mob).remove(Entity.RemovalReason.DISCARDED);
+            return InteractionResult.FAIL;
         }
-        CreatureSpawnEvent.SpawnReason reason = event.getReason();
-        switch (reason.toString()) {
+        switch (mobSpawnType.name().toUpperCase()) {
             case "DISPENSE_EGG", "EGG", "OCELOT_BABY", "SPAWNER_EGG" -> {
                 if (!area.isSpawnEggs()) {
-                    event.setShouldAbortSpawn(true);
-                    event.setCancelled(true);
-                    return;
+                    ((Entity) mob).remove(Entity.RemovalReason.DISCARDED);
+                    return InteractionResult.FAIL;
                 }
             }
             case "REINFORCEMENTS", "NATURAL", "MOUNT", "PATROL", "RAID", "SHEARED", "SILVERFISH_BLOCK", "ENDER_PEARL", "TRAP", "VILLAGE_DEFENSE", "VILLAGE_INVASION", "BEEHIVE", "CHUNK_GEN" -> {
                 if (!area.isMobSpawning()) {
-                    event.setShouldAbortSpawn(true);
-                    event.setCancelled(true);
-                    return;
+                    ((Entity) mob).remove(Entity.RemovalReason.DISCARDED);
+                    return InteractionResult.FAIL;
                 }
             }
             case "BREEDING" -> {
                 if (!area.isSpawnBreeding()) {
-                    event.setShouldAbortSpawn(true);
-                    event.setCancelled(true);
-                    return;
+                    ((Entity) mob).remove(Entity.RemovalReason.DISCARDED);
+                    return InteractionResult.FAIL;
                 }
             }
             case "BUILD_IRONGOLEM", "BUILD_SNOWMAN", "BUILD_WITHER", "CUSTOM" -> {
                 if (!area.isSpawnCustom()) {
-                    event.setShouldAbortSpawn(true);
-                    event.setCancelled(true);
-                    return;
+                    ((Entity) mob).remove(Entity.RemovalReason.DISCARDED);
+                    return InteractionResult.FAIL;
                 }
             }
             case "SPAWNER" -> {
                 if (!area.isMobSpawnerSpawning()) {
-                    event.setShouldAbortSpawn(true);
-                    event.setCancelled(true);
-                    return;
+                    ((Entity) mob).remove(Entity.RemovalReason.DISCARDED);
+                    return InteractionResult.FAIL;
                 }
             }
         }
         Plot plot = location.getOwnedPlotAbs();
         if (plot == null) {
-            EntityType type = event.getType();
+            EntityType<?> type = mob.getType();
             // PreCreatureSpawnEvent **should** not be called for DROPPED_ITEM, just for the sake of consistency
-            if (type == EntityType.DROPPED_ITEM) {
+            if (type == EntityType.ITEM) {
                 if (Settings.Enabled_Components.KILL_ROAD_ITEMS) {
-                    event.setCancelled(true);
+                    ((Entity) mob).remove(Entity.RemovalReason.DISCARDED);
+                    return InteractionResult.FAIL;
                 }
-                return;
+                return InteractionResult.PASS;
             }
             if (!area.isMobSpawning()) {
                 if (type == EntityType.PLAYER) {
-                    return;
+                    return InteractionResult.PASS;
                 }
-                if (type.isAlive()) {
-                    event.setShouldAbortSpawn(true);
-                    event.setCancelled(true);
+                if (mob instanceof LivingEntity) {
+                    ((Entity) mob).remove(Entity.RemovalReason.DISCARDED);
+                    return InteractionResult.FAIL;
                 }
             }
-            if (!area.isMiscSpawnUnowned() && !type.isAlive()) {
-                event.setShouldAbortSpawn(true);
-                event.setCancelled(true);
+            if (!area.isMiscSpawnUnowned() && !(mob instanceof LivingEntity)) {
+                ((Entity) mob).remove(Entity.RemovalReason.DISCARDED);
+                return InteractionResult.FAIL;
             }
-            return;
+            return InteractionResult.PASS;
         }
         if (Settings.Done.RESTRICT_BUILDING && DoneFlag.isDone(plot)) {
-            event.setShouldAbortSpawn(true);
-            event.setCancelled(true);
+            ((Entity) mob).remove(Entity.RemovalReason.DISCARDED);
+            return InteractionResult.FAIL;
         }
+        return InteractionResult.PASS;
     }
 
-    @EventHandler
-    public void onPlayerNaturallySpawnCreaturesEvent(PlayerNaturallySpawnCreaturesEvent event) {
+    /*
+
+    public InteractionResult onPlayerNaturallySpawnCreaturesEvent(PlayerNaturallySpawnCreaturesEvent event) {
         if (Settings.Paper_Components.CANCEL_CHUNK_SPAWN) {
-            Location location = BukkitUtil.adapt(event.getPlayer().getLocation());
+            Location location = FabricUtil.adapt(event.getPlayer().getLocation());
             PlotArea area = location.getPlotArea();
             if (area != null && !area.isMobSpawning()) {
-                event.setCancelled(true);
+                return InteractionResult.FAIL;
             }
         }
+        return InteractionResult.PASS;
     }
 
-    @EventHandler
+
     public void onPreSpawnerSpawnEvent(PreSpawnerSpawnEvent event) {
         if (Settings.Paper_Components.SPAWNER_SPAWN) {
-            Location location = BukkitUtil.adapt(event.getSpawnerLocation());
+            Location location = FabricUtil.adapt(event.getSpawnerLocation());
             PlotArea area = location.getPlotArea();
             if (area != null && !area.isMobSpawnerSpawning()) {
-                event.setCancelled(true);
+                return InteractionResult.FAIL;
                 event.setShouldAbortSpawn(true);
             }
         }
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST)
     public void onBlockPlace(BlockPlaceEvent event) {
         if (!Settings.Paper_Components.TILE_ENTITY_CHECK || !Settings.Enabled_Components.CHUNK_PROCESSOR) {
-            return;
+            return InteractionResult.PASS;
         }
         if (!(event.getBlock().getState(false) instanceof TileState)) {
-            return;
+            return InteractionResult.PASS;
         }
-        final Location location = BukkitUtil.adapt(event.getBlock().getLocation());
+        final Location location = FabricUtil.adapt(event.getBlock().getLocation());
         final PlotArea plotArea = location.getPlotArea();
         if (plotArea == null) {
-            return;
+            return InteractionResult.PASS;
         }
         final int tileEntityCount = event.getBlock().getChunk().getTileEntities(false).length;
         if (tileEntityCount >= Settings.Chunk_Processor.MAX_TILES) {
-            final PlotPlayer<?> plotPlayer = BukkitUtil.adapt(event.getPlayer());
+            final PlotPlayer<?> plotPlayer = FabricUtil.adapt(event.getPlayer());
             plotPlayer.sendMessage(
                     TranslatableCaption.of("errors.tile_entity_cap_reached"),
                     TagResolver.resolver("amount", Tag.inserting(Component.text(Settings.Chunk_Processor.MAX_TILES)))
             );
-            event.setCancelled(true);
+            return InteractionResult.FAIL;
             event.setBuild(false);
         }
     }
@@ -291,22 +338,22 @@ public class PaperListener {
      *
      * @param event Paper's PlayerLaunchProjectileEvent
      *
-    @EventHandler
+
     public void onProjectileLaunch(PlayerLaunchProjectileEvent event) {
         if (!Settings.Paper_Components.PLAYER_PROJECTILE) {
-            return;
+            return InteractionResult.PASS;
         }
         Projectile entity = event.getProjectile();
         ProjectileSource shooter = entity.getShooter();
         if (!(shooter instanceof Player)) {
-            return;
+            return InteractionResult.PASS;
         }
-        Location location = BukkitUtil.adapt(entity.getLocation());
+        Location location = FabricUtil.adapt(entity.getLocation());
         PlotArea area = location.getPlotArea();
         if (area == null) {
-            return;
+            return InteractionResult.PASS;
         }
-        PlotPlayer<Player> pp = BukkitUtil.adapt((Player) shooter);
+        PlotPlayer<Player> pp = FabricUtil.adapt((Player) shooter);
         Plot plot = location.getOwnedPlot();
 
         if (plot == null) {
@@ -321,7 +368,7 @@ public class PaperListener {
                         )
                 );
                 entity.remove();
-                event.setCancelled(true);
+                return InteractionResult.FAIL;
             }
         } else if (!plot.hasOwner()) {
             if (!pp.hasPermission(Permission.PERMISSION_ADMIN_PROJECTILE_UNOWNED)) {
@@ -333,12 +380,12 @@ public class PaperListener {
                         )
                 );
                 entity.remove();
-                event.setCancelled(true);
+                return InteractionResult.FAIL;
             }
         } else if (!plot.isAdded(pp.getUUID())) {
             if (entity.getType().equals(EntityType.FISHING_HOOK)) {
                 if (plot.getFlag(FishingFlag.class)) {
-                    return;
+                    return InteractionResult.PASS;
                 }
             }
             if (!plot.getFlag(ProjectilesFlag.class)) {
@@ -351,91 +398,140 @@ public class PaperListener {
                             )
                     );
                     entity.remove();
-                    event.setCancelled(true);
+                    return InteractionResult.FAIL;
                 }
             }
         }
     }
-
-    @EventHandler
-    public void onAsyncTabCompletion(final AsyncTabCompleteEvent event) {
-        if (!Settings.Paper_Components.ASYNC_TAB_COMPLETION) {
-            return;
-        }
-        String buffer = event.getBuffer();
-        if (!(event.getSender() instanceof Player)) {
-            return;
-        }
-        if ((!event.isCommand() && !buffer.startsWith("/")) || buffer.indexOf(' ') == -1) {
-            return;
+*/
+    public InteractionResult onAsyncTabCompletion(
+            ServerboundCommandSuggestionPacket serverboundCommandSuggestionPacket,
+            ServerPlayer serverPlayer
+    ) {
+        /*if (!Settings.Paper_Components.ASYNC_TAB_COMPLETION) {
+            return InteractionResult.PASS;
+        }*/
+        String buffer = serverboundCommandSuggestionPacket.getCommand();
+       /* if (!(event.getSender() instanceof ServerPlayer)) {
+            return InteractionResult.PASS;
+        }*/
+        if ((!buffer.startsWith("/")) || buffer.indexOf(' ') == -1) {
+            return InteractionResult.PASS;
         }
         if (buffer.startsWith("/")) {
             buffer = buffer.substring(1);
         }
         final String[] unprocessedArgs = buffer.split(Pattern.quote(" "));
         if (unprocessedArgs.length == 1) {
-            return; // We don't do anything in this case
+            return InteractionResult.PASS; // We don't do anything in this case
         } else if (!Settings.Enabled_Components.TAB_COMPLETED_ALIASES
                 .contains(unprocessedArgs[0].toLowerCase(Locale.ENGLISH))) {
-            return;
+            return InteractionResult.PASS;
         }
-        final String[] args = new String[unprocessedArgs.length - 1];
+        String[] args = new String[unprocessedArgs.length - 1];
         System.arraycopy(unprocessedArgs, 1, args, 0, args.length);
+        if(buffer.endsWith(" ")) {
+            args = new String[unprocessedArgs.length];
+            System.arraycopy(unprocessedArgs, 1, args, 0, args.length-1);
+            args[args.length-1] = "";
+        }
         try {
-            final PlotPlayer<?> player = BukkitUtil.adapt((Player) event.getSender());
+            final PlotPlayer<?> player = FabricUtil.adapt(serverPlayer);
             final Collection<Command> objects = MainCommand.getInstance().tab(player, args, buffer.endsWith(" "));
             if (objects == null) {
-                return;
+                return InteractionResult.PASS;
             }
             final List<String> result = new ArrayList<>();
             for (final Command o : objects) {
                 result.add(o.toString());
             }
-            event.setCompletions(result);
-            event.setHandled(true);
+
+            StringReader stringReader = new StringReader(serverboundCommandSuggestionPacket.getCommand());
+            if (stringReader.canRead() && stringReader.peek() == '/') {
+                stringReader.skip();
+            }
+            ParseResults<CommandSourceStack> parseResults = serverPlayer.server.getCommands().getDispatcher().parse(
+                    stringReader,
+                    serverPlayer.server.createCommandSourceStack()
+            );
+
+            final String finalBuffer = buffer;
+            final String[] finalArgs = args;
+            serverPlayer.server.getCommands().getDispatcher().getCompletionSuggestions(parseResults).thenAccept((suggestions) -> {
+                Suggestions replacements =
+                        new Suggestions(
+                                StringRange.at(
+                                        (finalBuffer.length()) + 1
+                                ),
+                                new ArrayList<>()
+                        );
+                if(finalArgs[finalArgs.length-1].isBlank()) {
+                    result.forEach(s -> {
+                        replacements.getList().add(new Suggestion(
+                                StringRange.at((finalBuffer.length())),
+                                s
+                        ));
+                    });
+                } else {
+                    result.forEach(s -> {
+                        replacements.getList().add(new Suggestion(
+                                StringRange.at((finalBuffer.length())),
+                                s.substring((unprocessedArgs[unprocessedArgs.length - 1].length()))
+                        ));
+                    });
+                }
+
+                serverPlayer.connection.send(new ClientboundCommandSuggestionsPacket(
+                        serverboundCommandSuggestionPacket.getId(),
+                        replacements
+                ));
+            });
+
         } catch (final Exception ignored) {
         }
+        return InteractionResult.PASS;
     }
 
-    @EventHandler(ignoreCancelled = true)
-    public void onBeaconEffect(final BeaconEffectEvent event) {
-        Block block = event.getBlock();
-        Location beaconLocation = BukkitUtil.adapt(block.getLocation());
-        Plot beaconPlot = beaconLocation.getPlot();
+    /*
+        @EventHandler(ignoreCancelled = true)
+        public void onBeaconEffect(final BeaconEffectEvent event) {
+            Block block = event.getBlock();
+            Location beaconLocation = FabricUtil.adapt(block.getLocation());
+            Plot beaconPlot = beaconLocation.getPlot();
 
-        PlotArea area = beaconLocation.getPlotArea();
-        if (area == null) {
-            return;
-        }
-
-        Player player = event.getPlayer();
-        Location playerLocation = BukkitUtil.adapt(player.getLocation());
-
-        PlotPlayer<Player> plotPlayer = BukkitUtil.adapt(player);
-        Plot playerStandingPlot = playerLocation.getPlot();
-        if (playerStandingPlot == null) {
-            FlagContainer container = area.getRoadFlagContainer();
-            if (!getBooleanFlagValue(container, BeaconEffectsFlag.class, true) ||
-                    (beaconPlot != null && Settings.Enabled_Components.DISABLE_BEACON_EFFECT_OVERFLOW)) {
-                event.setCancelled(true);
+            PlotArea area = beaconLocation.getPlotArea();
+            if (area == null) {
+                return InteractionResult.PASS;
             }
-            return;
-        }
 
-        FlagContainer container = playerStandingPlot.getFlagContainer();
-        boolean plotBeaconEffects = getBooleanFlagValue(container, BeaconEffectsFlag.class, true);
-        if (playerStandingPlot.equals(beaconPlot)) {
-            if (!plotBeaconEffects) {
-                event.setCancelled(true);
+            ServerPlayer player = event.getPlayer();
+            Location playerLocation = FabricUtil.adapt(player.getLocation());
+
+            PlotPlayer<ServerPlayer> plotPlayer = FabricUtil.adapt(player);
+            Plot playerStandingPlot = playerLocation.getPlot();
+            if (playerStandingPlot == null) {
+                FlagContainer container = area.getRoadFlagContainer();
+                if (!getBooleanFlagValue(container, BeaconEffectsFlag.class, true) ||
+                        (beaconPlot != null && Settings.Enabled_Components.DISABLE_BEACON_EFFECT_OVERFLOW)) {
+                    return InteractionResult.FAIL;
+                }
+                return InteractionResult.PASS;
             }
-            return;
-        }
 
-        if (!plotBeaconEffects || Settings.Enabled_Components.DISABLE_BEACON_EFFECT_OVERFLOW) {
-            event.setCancelled(true);
-        }
-    }
+            FlagContainer container = playerStandingPlot.getFlagContainer();
+            boolean plotBeaconEffects = getBooleanFlagValue(container, BeaconEffectsFlag.class, true);
+            if (playerStandingPlot.equals(beaconPlot)) {
+                if (!plotBeaconEffects) {
+                    return InteractionResult.FAIL;
+                }
+                return InteractionResult.PASS;
+            }
 
+            if (!plotBeaconEffects || Settings.Enabled_Components.DISABLE_BEACON_EFFECT_OVERFLOW) {
+                return InteractionResult.FAIL;
+            }
+        }
+    */
     private boolean getBooleanFlagValue(
             @NonNull FlagContainer container,
             @NonNull Class<? extends BooleanFlag<?>> flagClass,
@@ -444,5 +540,5 @@ public class PaperListener {
         BooleanFlag<?> flag = container.getFlag(flagClass);
         return flag == null ? defaultValue : flag.getValue();
     }
-*/
+
 }

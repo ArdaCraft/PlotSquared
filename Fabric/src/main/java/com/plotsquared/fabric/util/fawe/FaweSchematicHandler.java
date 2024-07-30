@@ -1,6 +1,7 @@
 package com.plotsquared.fabric.util.fawe;
-/*
+
 import com.google.inject.Inject;
+import com.google.inject.Singleton;
 import com.plotsquared.core.inject.factory.ProgressSubscriberFactory;
 import com.plotsquared.core.player.PlotPlayer;
 import com.plotsquared.core.plot.Plot;
@@ -9,13 +10,16 @@ import com.plotsquared.core.queue.QueueCoordinator;
 import com.plotsquared.core.util.SchematicHandler;
 import com.plotsquared.core.util.WorldUtil;
 import com.plotsquared.core.util.task.RunnableVal;
+import com.plotsquared.fabric.schematic.StateWrapper;
 import com.sk89q.jnbt.CompoundTag;
+import com.sk89q.worldedit.fabric.fawe.plotsquared.FaweDelegateSchematicHandler;
 import org.checkerframework.checker.nullness.qual.NonNull;
 
 import java.io.InputStream;
 import java.net.URL;
 import java.util.UUID;
 
+@Singleton
 public class FaweSchematicHandler extends SchematicHandler {
 
     private final FaweDelegateSchematicHandler delegate = new FaweDelegateSchematicHandler();
@@ -61,4 +65,4 @@ public class FaweSchematicHandler extends SchematicHandler {
     }
 
 }
-*/
+

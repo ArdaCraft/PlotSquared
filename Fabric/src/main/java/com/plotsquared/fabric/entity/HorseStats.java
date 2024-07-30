@@ -18,13 +18,14 @@
  */
 package com.plotsquared.fabric.entity;
 
-
-import net.minecraft.network.syncher.EntityDataAccessor;
+import net.minecraft.world.entity.animal.horse.Markings;
+import net.minecraft.world.entity.animal.horse.Variant;
 
 class HorseStats {
 
     double jump;
     boolean chest;
-    EntityDataAccessor<Integer> variant;
+    Variant variant;
+    Markings markings;
 
 }

@@ -14,10 +14,10 @@ public interface LevelSetBlockEvent {
     Event<LevelSetBlockEvent> EVENT = EventFactory.createArrayBacked(
             LevelSetBlockEvent.class,
             callbacks -> (
-                    blockPos, blockState, i, j,level
+                    blockPos, blockState, i, level
             ) -> {
                 for (LevelSetBlockEvent callback : callbacks) {
-                    InteractionResult result = callback.onSetBlock(blockPos, blockState, i, j, level
+                    InteractionResult result = callback.onSetBlock(blockPos, blockState, i, level
                     );
                     if (result != InteractionResult.PASS) {
                         return result;
@@ -31,7 +31,6 @@ public interface LevelSetBlockEvent {
             BlockPos blockPos,
             BlockState blockState,
             int i,
-            int j,
             Level level
     );
 

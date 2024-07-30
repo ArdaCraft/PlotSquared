@@ -41,6 +41,7 @@ public class EntityCategory extends Category<EntityType> implements Keyed {
         super("plotsquared:" + id);
         this.key = id;
         this.worldUtil = worldUtil;
+        load();
     }
 
     @Override

@@ -19,6 +19,7 @@
 package com.plotsquared.fabric.entity;
 
 class EntityBaseStats {
+
     EntityWrapper passenger;
     float fall;
     short fire;

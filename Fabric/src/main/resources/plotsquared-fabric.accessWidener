@@ -16,3 +16,12 @@ accessible field net/minecraft/server/level/ChunkMap generator Lnet/minecraft/wo
 accessible field net/minecraft/world/level/StructureManager level Lnet/minecraft/world/level/LevelAccessor;
 accessible field net/minecraft/world/level/StructureManager structureCheck Lnet/minecraft/world/level/levelgen/structure/StructureCheck;
 accessible field net/minecraft/world/level/levelgen/structure/StructureCheck dimension Lnet/minecraft/resources/ResourceKey;
+accessible method net/minecraft/world/level/chunk/LevelChunk updateBlockEntityTicker (Lnet/minecraft/world/level/block/entity/BlockEntity;)V
+accessible field net/minecraft/world/level/Level rainLevel F
+accessible field net/minecraft/world/level/Level thunderLevel F
+accessible field net/minecraft/world/entity/AgeableMob forcedAge I
+accessible field net/minecraft/world/entity/animal/horse/AbstractHorse inventory Lnet/minecraft/world/SimpleContainer;
+accessible field net/minecraft/world/entity/animal/Sheep DATA_WOOL_ID Lnet/minecraft/network/syncher/EntityDataAccessor;
+accessible field net/minecraft/world/entity/boss/enderdragon/phases/EnderDragonPhaseManager phases [Lnet/minecraft/world/entity/boss/enderdragon/phases/DragonPhaseInstance;
+accessible field net/minecraft/world/entity/EntityType factory Lnet/minecraft/world/entity/EntityType$EntityFactory;
+accessible field net/minecraft/world/entity/Entity onGroundNoBlocks Z

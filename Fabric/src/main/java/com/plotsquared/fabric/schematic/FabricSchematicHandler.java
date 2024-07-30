@@ -19,8 +19,7 @@ public class FabricSchematicHandler extends SchematicHandler {
 
     @Override
     public boolean restoreTile(QueueCoordinator queue, CompoundTag ct, int x, int y, int z) {
-        return queue.setTile(x,y,z,ct);
-       // return new StateWrapper(ct).restoreTag(queue.getWorld().getName(), x, y, z);
+       return new StateWrapper(ct).restoreTag(queue.getWorld().getNameUnsafe(), x, y, z);
     }
 
 }

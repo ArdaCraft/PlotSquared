@@ -19,7 +19,6 @@
 package com.plotsquared.fabric.entity;
 
 
-import com.plotsquared.core.location.Location;
 import net.minecraft.core.GlobalPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
@@ -44,8 +43,8 @@ public abstract class EntityWrapper {
         this.x = location.pos().getX();
         this.y = location.pos().getY();
         this.z = location.pos().getZ();
-        this.yaw = entity.getViewXRot(1.0f);
-        this.pitch = entity.getViewYRot(1.0f);
+        this.yaw = entity.getXRot();
+        this.pitch = entity.getYRot();
     }
 
     @SuppressWarnings("deprecation")

@@ -19,6 +19,7 @@
 package com.plotsquared.fabric.entity;
 
 class ArmorStandStats {
+
     final float[] head = new float[3];
     final float[] body = new float[3];
     final float[] leftLeg = new float[3];

@@ -8,6 +8,7 @@ import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import com.plotsquared.fabric.FabricCommand;
 import net.minecraft.commands.CommandSourceStack;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -26,6 +27,7 @@ public class CommandSuggestionProvider implements SuggestionProvider<CommandSour
 
                 context.getInput().replace(context.getInput().substring(0, context.getInput().indexOf(" ")), "").split(" ")
         );
+
         if (suggestions != null) {
             for (String suggestion : suggestions) {
                 builder.suggest(suggestion);

@@ -17,15 +17,14 @@ import org.spongepowered.asm.mixin.injection.callback.LocalCapture;
 @Mixin(Level.class)
 public class LevelMixin {
 
-    @Inject(method = "setBlock(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;II)Z", at =
+    @Inject(method = "setBlock(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;I)Z", at =
     @At(value = "HEAD"), locals =
             LocalCapture.CAPTURE_FAILHARD, cancellable = true)
-    public void onSetBlocksDirty(
-
-            BlockPos blockPos, BlockState blockState, int i, int j, CallbackInfoReturnable<Boolean> cir
+    public void onSetBlock(
+            BlockPos blockPos, BlockState blockState, int i, CallbackInfoReturnable<Boolean> cir
     ) {
         InteractionResult result = LevelSetBlockEvent.EVENT.invoker().onSetBlock(
-                blockPos, blockState, i, j, (Level) (Object) this);
+                blockPos, blockState, i, (Level) (Object) this);
         if (result != InteractionResult.PASS) {
             cir.setReturnValue(false);
             cir.cancel();
@@ -38,7 +37,7 @@ public class LevelMixin {
         if (currentEntity != null) {
             // Perform custom logic here using currentEntity
             InteractionResult result = LevelSetBlockAndUpdateCallback.EVENT.invoker().onSetBlockAndUpdate(blockPos, blockState,
-                    currentEntity
+                    currentEntity, (Level) (Object) this
             );
             if (result != InteractionResult.PASS) {
                 cir.setReturnValue(false);
@@ -47,4 +46,15 @@ public class LevelMixin {
         }
     }
 
+    /*
+    @Inject(method = "setBlock(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;I)Z", at = @At(
+            "HEAD"), cancellable = true)
+    public void onSetBlock(BlockPos blockPos, BlockState blockState, int i, CallbackInfoReturnable<Boolean> cir) {
+        InteractionResult result = BlockIgniteEvent.EVENT.invoker().onIgnite(blockPos, blockState, i, (Level) (Object) this);
+        if (result != InteractionResult.PASS) {
+            cir.setReturnValue(false);
+            cir.cancel();
+        }
+    }
+*/
 }

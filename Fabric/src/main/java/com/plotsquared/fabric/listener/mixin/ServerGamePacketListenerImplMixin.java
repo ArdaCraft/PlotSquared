@@ -5,7 +5,10 @@ import com.plotsquared.fabric.listener.event.HandleInteractCallback;
 import com.plotsquared.fabric.listener.event.HandleMoveVehicleCallback;
 import com.plotsquared.fabric.listener.event.HandlePlayerMoveCallback;
 import com.plotsquared.fabric.listener.event.LecternTakeButtonCallback;
-import net.minecraft.core.GlobalPos;
+import com.plotsquared.fabric.listener.event.ReceiveCommandSuggestionsPacketEvent;
+import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.game.ClientboundCommandSuggestionsPacket;
+import net.minecraft.network.protocol.game.ServerboundCommandSuggestionPacket;
 import net.minecraft.network.protocol.game.ServerboundContainerButtonClickPacket;
 import net.minecraft.network.protocol.game.ServerboundContainerClosePacket;
 import net.minecraft.network.protocol.game.ServerboundInteractPacket;
@@ -65,12 +68,26 @@ public class ServerGamePacketListenerImplMixin {
     }
 
     @Inject(method = "handleContainerButtonClick", at = @At("HEAD"), cancellable = true)
-    public void onLecternTakeButton(ServerboundContainerButtonClickPacket serverboundContainerButtonClickPacket,
-                                    CallbackInfo ci) {
+    public void onLecternTakeButton(
+            ServerboundContainerButtonClickPacket serverboundContainerButtonClickPacket,
+            CallbackInfo ci
+    ) {
         InteractionResult result = LecternTakeButtonCallback.EVENT.invoker().onTakeButton(
                 serverboundContainerButtonClickPacket, player);
         if (result != InteractionResult.PASS) {
             ci.cancel();
         }
     }
+
+    @Inject(method = "handleCustomCommandSuggestions", at = @At("HEAD"), cancellable = true)
+    public void onHandleCustomCommandSuggestions(
+            ServerboundCommandSuggestionPacket serverboundCommandSuggestionPacket,
+            CallbackInfo ci
+    ) {
+        ReceiveCommandSuggestionsPacketEvent.EVENT.invoker().onSendPacket(
+                serverboundCommandSuggestionPacket,
+                this.player
+        );
+    }
+
 }

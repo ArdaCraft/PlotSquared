@@ -8,6 +8,7 @@ import com.plotsquared.core.queue.BasicQueueCoordinator;
 import com.plotsquared.core.queue.ChunkCoordinator;
 import com.plotsquared.core.queue.LocalChunk;
 import com.plotsquared.core.util.ChunkUtil;
+import com.plotsquared.fabric.schematic.StateWrapper;
 import com.plotsquared.fabric.util.FabricBlockUtil;
 import com.plotsquared.fabric.util.FabricUtil;
 import com.sk89q.jnbt.CompoundTag;
@@ -15,7 +16,6 @@ import com.sk89q.worldedit.WorldEditException;
 import com.sk89q.worldedit.extent.clipboard.BlockArrayClipboard;
 import com.sk89q.worldedit.extent.clipboard.Clipboard;
 import com.sk89q.worldedit.fabric.FabricAdapter;
-import com.sk89q.worldedit.fabric.FabricWorld;
 import com.sk89q.worldedit.math.BlockVector2;
 import com.sk89q.worldedit.math.BlockVector3;
 import com.sk89q.worldedit.regions.CuboidRegion;
@@ -30,7 +30,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.Container;
 import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.chunk.LevelChunk;
 import org.checkerframework.checker.nullness.qual.NonNull;
 
@@ -185,10 +184,9 @@ public class FabricQueueCoordinator extends BasicQueueCoordinator {
                             BaseBlock block = getWorld().getBlock(blockVector3).toBaseBlock(tag);
                             getWorld().setBlock(blockVector3, block, getSideEffectSet(SideEffectState.NONE));
                         } catch (WorldEditException ignored) {
-                            ignored.printStackTrace();
-                            /* TODO RESTORE ENTITY FROM TAG USING FABRIC */
-                            /*StateWrapper sw = new StateWrapper(tag);
-                            sw.restoreTag(getWorld().getName(), blockVector3.getX(), blockVector3.getY(), blockVector3.getZ());*/
+                            StateWrapper sw = new StateWrapper(tag);
+                            sw.restoreTag(getWorld().getName(), blockVector3.getX(), blockVector3.getY(), blockVector3.getZ());
+
                         }
                     });
                 }
@@ -268,22 +266,18 @@ public class FabricQueueCoordinator extends BasicQueueCoordinator {
             }
 
             getFabricWorld().setBlock(new BlockPos(x, y, z), blockData,2);
-          //  existing.setType(FabricAdapter.adapt(block.getBlockType()), false);
-           // existing.setBlockData(blockData, false);
             if (block.hasNbtData()) {
                 CompoundTag tag = block.getNbtData();
-                /*
-                getFabricWorld().to;
-                StateWrapper sw = new StateWrapper(tag);
 
-                sw.restoreTag(existing);*/
+                StateWrapper sw = new StateWrapper(tag);
+                sw.restoreTag(getFabricWorld().dimension().location().getPath(), x, y, z);
             }
         }
     }
 
     private ServerLevel getFabricWorld() {
         if (fabricWorld == null) {
-            fabricWorld = FabricUtil.getWorld(getWorld().getName());
+            fabricWorld = FabricUtil.getWorld(getWorld().getNameUnsafe());
         }
         return fabricWorld;
     }

@@ -14,6 +14,16 @@ base {
 
 loom {
     accessWidenerPath = file("src/main/resources/plotsquared-fabric.accessWidener")
+    runs {
+        client {
+            runDir = "runClient"
+            client()
+        }
+        server {
+            runDir = "run"
+            server()
+        }
+    }
 }
 
 repositories {
@@ -127,6 +137,7 @@ dependencies {
     modCompileOnly("name:Multiworld-Fabric-1.20.1")
     modCompileOnlyApi("xyz.nucleoid:fantasy:0.4.11+1.20-rc1")
     modCompileOnlyApi("maven.modrinth:rCEje2Lt:bTyKGlcm")
+    modCompileOnlyApi("maven.modrinth:N6n5dqoA:f9pguExv")
     implementation(include(libs.squirrelid.get())) {transitive = false}
     implementation(include(libs.arkitektonika.get()))
     implementation(include(libs.paster.get()))

@@ -19,35 +19,27 @@
 package com.plotsquared.fabric.listener;
 
 import com.google.inject.Inject;
-import com.plotsquared.core.PlotSquared;
 import com.plotsquared.core.configuration.Settings;
-import com.plotsquared.core.listener.PlayerBlockEventType;
 import com.plotsquared.core.location.Location;
-import com.plotsquared.core.permissions.Permission;
-import com.plotsquared.core.player.PlotPlayer;
 import com.plotsquared.core.plot.Plot;
 import com.plotsquared.core.plot.PlotArea;
-import com.plotsquared.core.plot.PlotHandler;
 import com.plotsquared.core.plot.flag.implementations.DisablePhysicsFlag;
-import com.plotsquared.core.plot.flag.implementations.EntityChangeBlockFlag;
 import com.plotsquared.core.plot.flag.implementations.ExplosionFlag;
 import com.plotsquared.core.plot.flag.implementations.InvincibleFlag;
-import com.plotsquared.core.plot.flag.implementations.ProjectileChangeBlockFlag;
 import com.plotsquared.core.plot.world.PlotAreaManager;
 import com.plotsquared.core.util.EventDispatcher;
 import com.plotsquared.core.util.PlotFlagUtil;
 import com.plotsquared.fabric.FabricPlatform;
 import com.plotsquared.fabric.data.PlotSquaredDataAttachments;
-import com.plotsquared.fabric.listener.event.EntityTypeCreateCallback;
+import com.plotsquared.fabric.listener.event.ExplosionPrimedEvent;
+import com.plotsquared.fabric.listener.event.FallingBlockEntityEvent;
+import com.plotsquared.fabric.listener.event.MobSpawnEvent;
 import com.plotsquared.fabric.util.FabricEntityUtil;
 import com.plotsquared.fabric.util.FabricUtil;
-import com.sk89q.worldedit.world.block.BlockType;
-import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
-import net.fabricmc.fabric.api.event.player.UseEntityCallback;
-import net.minecraft.core.BlockPos;
 import net.minecraft.core.GlobalPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.DifficultyInstance;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.damagesource.DamageTypes;
@@ -55,15 +47,22 @@ import net.minecraft.world.entity.AgeableMob;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.MobSpawnType;
+import net.minecraft.world.entity.SpawnGroupData;
 import net.minecraft.world.entity.item.FallingBlockEntity;
+import net.minecraft.world.entity.item.PrimedTnt;
+import net.minecraft.world.level.ServerLevelAccessor;
+import net.minecraft.world.level.block.AirBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import xyz.nucleoid.stimuli.Stimuli;
 import xyz.nucleoid.stimuli.event.entity.EntityDamageEvent;
 import xyz.nucleoid.stimuli.event.entity.EntitySpawnEvent;
 
-import java.util.function.Consumer;
+import java.util.List;
 
 
 @SuppressWarnings("unused")
@@ -84,8 +83,14 @@ public class EntityEventListener {
         this.plotAreaManager = plotAreaManager;
         this.eventDispatcher = eventDispatcher;
         Stimuli.global().listen(EntityDamageEvent.EVENT, this::onEntityCombustByEntity);
-        EntityTypeCreateCallback.EVENT.register(this::creatureSpawnEvent);
-        //Stimuli.global().listen(EntitySpawnEvent.EVENT, this::onEntityFall);
+        Stimuli.global().listen(EntityDamageEvent.EVENT, this::onEntityDamageByEntityEvent);
+        MobSpawnEvent.EVENT.register(this::creatureSpawnEvent);
+        FallingBlockEntityEvent.EVENT.register(this::onEntityFall);
+        Stimuli.global().listen(EntityDamageEvent.EVENT, this::onDamage);
+        Stimuli.global().listen(EntityDamageEvent.EVENT, this::onBigBoom);
+        ExplosionPrimedEvent.EVENT.register(this::onPrime);
+        Stimuli.global().listen(EntitySpawnEvent.EVENT, this::onVehicleCreate);
+
     }
 
     public InteractionResult onEntityCombustByEntity(LivingEntity entity, DamageSource source, float amount) {
@@ -123,92 +128,87 @@ public class EntityEventListener {
     }
 
     public InteractionResult creatureSpawnEvent(
-            ServerLevel serverLevel,
-            CompoundTag compoundTag,
-            Consumer<?> consumer,
-            BlockPos blockPos,
+            ServerLevelAccessor serverLevelAccessor,
+            DifficultyInstance difficultyInstance,
             MobSpawnType mobSpawnType,
-            boolean bl,
-            boolean bl2,
-            Object entitySpawned
+            SpawnGroupData spawnGroupData,
+            CompoundTag compoundTag,
+            Mob mob
     ) {
-        if (entitySpawned instanceof Entity entity) {
-            Location location = FabricUtil.adapt(GlobalPos.of(entity.level().dimension(), entity.blockPosition()));
-            PlotArea area = location.getPlotArea();
-            if (area == null) {
-                return InteractionResult.PASS;
-            }
-            // Armour-stands are handled elsewhere and should not be handled by area-wide entity-spawn options
-            if (entity.getType() == EntityType.ARMOR_STAND) {
-                return InteractionResult.FAIL;
-            }
-            switch (mobSpawnType.name().toUpperCase()) {
-                case "DISPENSE_EGG", "EGG", "OCELOT_BABY", "SPAWNER_EGG" -> {
-                    if (!area.isSpawnEggs()) {
-                        entity.remove(Entity.RemovalReason.DISCARDED);
-                        return InteractionResult.FAIL;
-                    }
-                }
-                case "REINFORCEMENTS", "NATURAL", "MOUNT", "PATROL", "RAID", "SHEARED", "SILVERFISH_BLOCK", "ENDER_PEARL",
-                        "TRAP", "VILLAGE_DEFENSE", "VILLAGE_INVASION", "BEEHIVE", "CHUNK_GEN", "NETHER_PORTAL",
-                        "FROZEN", "SPELL", "DEFAULT" -> {
-                    if (!area.isMobSpawning()) {
-                        entity.remove(Entity.RemovalReason.DISCARDED);
-                        return InteractionResult.FAIL;
-                    }
-                }
-                case "BREEDING", "DUPLICATION" -> {
-                    if (!area.isSpawnBreeding()) {
-                        entity.remove(Entity.RemovalReason.DISCARDED);
-                        return InteractionResult.FAIL;
-                    }
-                }
-                case "CUSTOM" -> {
-                    if (!area.isSpawnCustom()) {
-                        entity.remove(Entity.RemovalReason.DISCARDED);
-                        return InteractionResult.FAIL;
-                    }
-                    // No need to clutter metadata if running paper
-                    //if (!PaperLib.isPaper()) {
-                    entity.setAttached(PlotSquaredDataAttachments.PS_CUSTOM_SPAWNED, true);
-                    // }
-                    return InteractionResult.PASS; // Don't cancel if mob spawning is disabled
-                }
-                case "BUILD_IRONGOLEM", "BUILD_SNOWMAN", "BUILD_WITHER" -> {
-                    if (!area.isSpawnCustom()) {
-                        entity.remove(Entity.RemovalReason.DISCARDED);
-                        return InteractionResult.FAIL;
-                    }
-                }
-                case "SPAWNER" -> {
-                    if (!area.isMobSpawnerSpawning()) {
-                        entity.remove(Entity.RemovalReason.DISCARDED);
-                        return InteractionResult.FAIL;
-                    }
-                }
-            }
-            Plot plot = area.getOwnedPlotAbs(location);
-            if (plot == null) {
-                if (!area.isMobSpawning()) {
-                    entity.remove(Entity.RemovalReason.DISCARDED);
+        Location location = FabricUtil.adapt(GlobalPos.of(mob.level().dimension(), mob.blockPosition()));
+        PlotArea area = location.getPlotArea();
+        if (area == null) {
+            return InteractionResult.PASS;
+        }
+        // Armour-stands are handled elsewhere and should not be handled by area-wide entity-spawn options
+        if (mob.getType() == EntityType.ARMOR_STAND) {
+            return InteractionResult.FAIL;
+        }
+        switch (mobSpawnType.name().toUpperCase()) {
+            case "DISPENSE_EGG", "EGG", "OCELOT_BABY", "SPAWN_EGG" -> {
+                if (!area.isSpawnEggs()) {
+                    mob.remove(Entity.RemovalReason.DISCARDED);
                     return InteractionResult.FAIL;
                 }
-                return InteractionResult.PASS;
             }
-            if (FabricEntityUtil.checkEntity(entity, plot.getBasePlot(false))) {
-                entity.remove(Entity.RemovalReason.DISCARDED);
+            case "REINFORCEMENTS", "NATURAL", "MOUNT", "PATROL", "RAID", "SHEARED", "SILVERFISH_BLOCK", "ENDER_PEARL",
+                    "TRAP", "VILLAGE_DEFENSE", "VILLAGE_INVASION", "BEEHIVE", "CHUNK_GEN", "NETHER_PORTAL",
+                    "FROZEN", "SPELL", "DEFAULT" -> {
+                if (!area.isMobSpawning()) {
+                    mob.remove(Entity.RemovalReason.DISCARDED);
+                    return InteractionResult.FAIL;
+                }
+            }
+            case "BREEDING", "DUPLICATION" -> {
+                if (!area.isSpawnBreeding()) {
+                    mob.remove(Entity.RemovalReason.DISCARDED);
+                    return InteractionResult.FAIL;
+                }
+            }
+            case "COMMAND" -> {
+                if (!area.isSpawnCustom()) {
+                    mob.remove(Entity.RemovalReason.DISCARDED);
+                    return InteractionResult.FAIL;
+                }
+                // No need to clutter metadata if running paper
+                //if (!PaperLib.isPaper()) {
+                mob.setAttached(PlotSquaredDataAttachments.PS_CUSTOM_SPAWNED, true);
+                // }
+                return InteractionResult.PASS; // Don't cancel if mob spawning is disabled
+            }
+            case "BUILD_IRONGOLEM", "BUILD_SNOWMAN", "BUILD_WITHER" -> {
+                if (!area.isSpawnCustom()) {
+                    mob.remove(Entity.RemovalReason.DISCARDED);
+                    return InteractionResult.FAIL;
+                }
+            }
+            case "SPAWNER" -> {
+                if (!area.isMobSpawnerSpawning()) {
+                    mob.remove(Entity.RemovalReason.DISCARDED);
+                    return InteractionResult.FAIL;
+                }
+            }
+        }
+        Plot plot = area.getOwnedPlotAbs(location);
+        if (plot == null) {
+            if (!area.isMobSpawning()) {
+                mob.remove(Entity.RemovalReason.DISCARDED);
                 return InteractionResult.FAIL;
             }
+            return InteractionResult.PASS;
+        }
+        if (FabricEntityUtil.checkEntity(mob, plot.getBasePlot(false))) {
+            mob.remove(Entity.RemovalReason.DISCARDED);
+            return InteractionResult.FAIL;
         }
         return InteractionResult.PASS;
     }
 
-    /*TODO CREATE FALLING BLOCK TICK CALLBACK
     public InteractionResult onEntityFall(Entity entity) {
-        if(entity instanceof FallingBlockEntity fallingBlockEntity) {
+        if (entity instanceof FallingBlockEntity fallingBlockEntity) {
             BlockState block = fallingBlockEntity.getBlockState();
             ServerLevel world = entity.getServer().getLevel(entity.level().dimension());
-            String worldName = world.serverLevelData.getLevelName();
+            String worldName = world.dimension().location().getPath();
             if (!this.plotAreaManager.hasPlotArea(worldName)) {
                 return InteractionResult.PASS;
             }
@@ -221,139 +221,139 @@ public class EntityEventListener {
             if (plot == null || plot.getFlag(DisablePhysicsFlag.class)) {
                 if (plot != null) {
                     if (!fallingBlockEntity.isNoGravity()) {
+                        fallingBlockEntity.setNoGravity(true);
+                        fallingBlockEntity.setDeltaMovement(Vec3.ZERO);
                         BlockEventListener.sendBlockChange(GlobalPos.of(world.dimension(), entity.blockPosition()), block);
                     }
                     plot.debug("Falling block event was cancelled because disable-physics = true");
                 }
                 return InteractionResult.FAIL;
             }
-            if (event.getTo().hasGravity()) {
-                Entity entity = event.getEntity();
-                List<MetadataValue> meta = entity.getMetadata("plot");
+            if (!entity.isNoGravity()) {
+                List<String> plotStrings = entity.getAttached(PlotSquaredDataAttachments.PLOT);
+
+                List<Plot> meta = plotStrings == null ? List.of() : plotStrings.stream().map(s -> Plot.fromString(
+                        null,
+                        s
+                )).toList();
                 if (meta.isEmpty()) {
-                    return;
+                    return InteractionResult.PASS;
                 }
-                Plot origin = (Plot) meta.get(0).value();
+                Plot origin = meta.get(0);
                 if (origin != null && !origin.equals(plot)) {
-                    event.setCancelled(true);
-                    entity.remove();
+                    entity.remove(Entity.RemovalReason.DISCARDED);
+                    return InteractionResult.FAIL;
                 }
-            } else if (event.getTo() == Material.AIR) {
-                event.getEntity().setMetadata("plot", new FixedMetadataValue((Plugin) PlotSquared.platform(), plot));
+            } else if (entity.getBlockStateOn().getBlock() instanceof AirBlock) {
+                entity.setAttached(PlotSquaredDataAttachments.PLOT, List.of(plot.toString()));
             }
         }
+        return InteractionResult.PASS;
     }
 
-    @EventHandler(priority = EventPriority.HIGH)
-    public void onDamage(EntityDamageEvent event) {
-        if (event.getEntityType() != EntityType.PLAYER) {
-            return;
+    public InteractionResult onDamage(LivingEntity entity, DamageSource source, float amount) {
+        if (entity.getType() != EntityType.PLAYER) {
+            return InteractionResult.PASS;
         }
-        Location location = BukkitUtil.adapt(event.getEntity().getLocation());
+        Location location = FabricUtil.adapt(GlobalPos.of(entity.level().dimension(), entity.blockPosition()));
         PlotArea area = location.getPlotArea();
         if (area == null) {
-            return;
+            return InteractionResult.PASS;
         }
         Plot plot = location.getOwnedPlot();
         if (plot == null) {
             if (PlotFlagUtil.isAreaRoadFlagsAndFlagEquals(area, InvincibleFlag.class, true)) {
-                event.setCancelled(true);
+                return InteractionResult.FAIL;
             }
-            return;
+            return InteractionResult.PASS;
         }
         if (plot.getFlag(InvincibleFlag.class)) {
-            plot.debug(event.getEntity().getName() + " could not take damage because invincible = true");
-            event.setCancelled(true);
+            plot.debug(entity.getName() + " could not take damage because invincible = true");
+            return InteractionResult.FAIL;
         }
-    }*/
-    /*
-    public void onBigBoom(EntityExplodeEvent event) {
-        Location location = BukkitUtil.adapt(event.getLocation());
-        PlotArea area = location.getPlotArea();
-        boolean plotArea = location.isPlotArea();
-        if (!plotArea) {
-            if (!this.plotAreaManager.hasPlotArea(location.getWorldName())) {
-                return;
-            }
-            return;
-        }
-        Plot plot = area.getOwnedPlot(location);
-        if (plot != null) {
-            if (plot.getFlag(ExplosionFlag.class)) {
-                List<MetadataValue> meta = event.getEntity().getMetadata("plot");
-                Plot origin;
-                if (meta.isEmpty()) {
-                    origin = plot;
-                } else {
-                    origin = (Plot) meta.get(0).value();
-                }
-                if (this.lastRadius != 0) {
-                    List<Entity> nearby = event.getEntity().getNearbyEntities(this.lastRadius, this.lastRadius, this.lastRadius);
-                    for (Entity near : nearby) {
-                        if (near instanceof TNTPrimed || near.getType().equals(EntityType.MINECART_TNT)) {
-                            if (!near.hasMetadata("plot")) {
-                                near.setMetadata("plot", new FixedMetadataValue((Plugin) PlotSquared.platform(), plot));
-                            }
-                        }
-                    }
-                    this.lastRadius = 0;
-                }
-                Iterator<Block> iterator = event.blockList().iterator();
-                while (iterator.hasNext()) {
-                    Block block = iterator.next();
-                    location = BukkitUtil.adapt(block.getLocation());
-                    if (!area.contains(location.getX(), location.getZ()) || !origin.equals(area.getOwnedPlot(location))) {
-                        iterator.remove();
-                    }
-                }
-                return;
-            } else {
-                plot.debug("Explosion was cancelled because explosion = false");
-            }
-        }
-        event.setCancelled(true);
-        //Spawn Explosion Particles when enabled in settings
-        if (Settings.General.ALWAYS_SHOW_EXPLOSIONS) {
-            event.getLocation().getWorld().spawnParticle(Particle.EXPLOSION_HUGE, event.getLocation(), 0);
-        }
+        return InteractionResult.PASS;
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onPeskyMobsChangeTheWorldLikeWTFEvent(EntityChangeBlockEvent event) {
+    public InteractionResult onBigBoom(LivingEntity entity, DamageSource source, float amount) {
+        if (source.is(DamageTypes.EXPLOSION)) {
+            Location location = FabricUtil.adapt(GlobalPos.of(entity.level().dimension(), entity.blockPosition()));
+            PlotArea area = location.getPlotArea();
+            boolean plotArea = location.isPlotArea();
+            if (!plotArea) {
+                if (!this.plotAreaManager.hasPlotArea(location.getWorldName())) {
+                    return InteractionResult.PASS;
+                }
+                return InteractionResult.PASS;
+            }
+            Plot plot = area.getOwnedPlot(location);
+            if (plot != null) {
+                if (plot.getFlag(ExplosionFlag.class)) {
+                    List<Plot> meta =
+                            entity
+                                    .getAttached(PlotSquaredDataAttachments.PLOT)
+                                    .stream()
+                                    .map(s -> Plot.fromString(null, s))
+                                    .toList();
+                    if (this.lastRadius != 0) {
+
+                        List<Entity> nearby = entity.level().getEntities(entity, AABB.ofSize(Vec3.ZERO, this.lastRadius,
+                                this.lastRadius, this.lastRadius
+                        ));
+                        for (Entity near : nearby) {
+                            if (near instanceof PrimedTnt || near.getType().equals(EntityType.TNT_MINECART)) {
+                                if (!near.hasAttached(PlotSquaredDataAttachments.PLOT)) {
+                                    near.setAttached(PlotSquaredDataAttachments.PLOT, List.of(plot.toString()));
+                                }
+                            }
+                        }
+                        this.lastRadius = 0;
+                    }
+                    return InteractionResult.PASS;
+                } else {
+                    plot.debug("Explosion was cancelled because explosion = false");
+                }
+            }
+            return InteractionResult.FAIL;
+        }
+        return InteractionResult.PASS;
+    }
+
+    /*
+    public InteractionResult onPeskyMobsChangeTheWorldLikeWTFEvent() {
         Entity e = event.getEntity();
-        Material type = event.getBlock().getType();
-        Location location = BukkitUtil.adapt(event.getBlock().getLocation());
+        Block type = event.getBlock().getType();
+        Location location = FabricUtil.adapt(event.getBlock().getLocation());
         PlotArea area = location.getPlotArea();
         if (area == null) {
-            return;
+            return InteractionResult.PASS;
         }
-        if (e instanceof FallingBlock) {
+        if (e instanceof FallingBlockEntity) {
             // allow falling blocks converting to blocks and vice versa
-            return;
+            return InteractionResult.PASS;
         } else if (e instanceof Boat) {
             // allow boats destroying lily pads
-            if (type == Material.LILY_PAD) {
-                return;
+            if (type == Blocks.LILY_PAD) {
+                return InteractionResult.PASS;
             }
-        } else if (e instanceof Player player) {
-            BukkitPlayer pp = BukkitUtil.adapt(player);
+        } else if (e instanceof ServerPlayer player) {
+            FabricPlayer pp = FabricUtil.adapt(player);
             if (type.toString().equals("POWDER_SNOW")) {
                 // Burning player evaporating powder snow. Use same checks as
                 // trampling farmland
-                BlockType blockType = BukkitAdapter.asBlockType(type);
+                BlockType blockType = FabricAdapter.adapt(type);
                 if (!this.eventDispatcher.checkPlayerBlockEvent(pp,
                         PlayerBlockEventType.TRIGGER_PHYSICAL, location, blockType, true
                 )) {
-                    event.setCancelled(true);
+                    return InteractionResult.FAIL;
                 }
-                return;
+                return InteractionResult.PASS;
             } else {
                 // already handled by other flags (mainly the 'use' flag):
                 // - player tilting big dripleaf by standing on it
                 // - player picking glow berries from cave vine
                 // - player trampling farmland
                 // - player standing on or clicking redstone ore
-                return;
+                return InteractionResult.PASS;
             }
         } else if (e instanceof Projectile entity) {
             // Exact same as the ProjectileHitEvent listener, except that we let
@@ -405,15 +405,15 @@ public class EntityEventListener {
             plot.debug(e.getType() + " could not change block because entity-change-block = false");
             event.setCancelled(true);
         }
-    }
+    }*/
 
-    @EventHandler
-    public void onPrime(ExplosionPrimeEvent event) {
-        this.lastRadius = event.getRadius() + 1;
+    public InteractionResult onPrime(float radius) {
+        this.lastRadius = radius + 1;
+        return InteractionResult.PASS;
     }
 
     public InteractionResult onVehicleCreate(Entity entity) {
-        if(entity.isVehicle()) {
+        if (entity.isVehicle()) {
             Location location = FabricUtil.adapt(GlobalPos.of(entity.level().dimension(), entity.blockPosition()));
             PlotArea area = location.getPlotArea();
             if (area == null) {
@@ -425,10 +425,10 @@ public class EntityEventListener {
                 return InteractionResult.FAIL;
             }
             if (Settings.Enabled_Components.KILL_ROAD_VEHICLES) {
-                entity.setAttached(PlotSquaredDataAttachments.PLOT_DATA, plot);
+                entity.setAttached(PlotSquaredDataAttachments.PLOT_DATA, plot.toString());
             }
         }
         return InteractionResult.PASS;
     }
-*/
+
 }

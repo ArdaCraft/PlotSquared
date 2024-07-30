@@ -1,5 +1,6 @@
 package com.plotsquared.fabric.listener.mixin;
 
+import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.plotsquared.fabric.listener.event.FarmBlockDryEvent;
@@ -19,20 +20,16 @@ import xyz.nucleoid.stimuli.Stimuli;
 })
 public class FarmBlockMixin {
 
-    @WrapOperation(
-            method = "tick",
-            at = @At(
-                    value = "INVOKE",
-                    target = "Lnet/minecraft/world/level/block/FarmBlock;turnToDirt(Lnet/minecraft/world/entity/Entity;Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;)V"
-            )
+    @WrapMethod(
+            method = "turnToDirt"
     )
-    public void onScheduledTickSetBlockState(
-            Entity entity, BlockState blockState, Level level, BlockPos blockPos, Operation<Void> original, BlockState from
+    private static void onScheduledTickSetBlockState(
+            Entity entity, BlockState blockState, Level level, BlockPos blockPos, Operation<Void> original
     ) {
         var events = Stimuli.select();
 
         try (var invokers = events.at(level, blockPos)) {
-            var result = invokers.get(FarmBlockDryEvent.EVENT).onSoilDry(entity, blockState, level, blockPos, from);
+            var result = invokers.get(FarmBlockDryEvent.EVENT).onSoilDry(entity, blockState, level, blockPos);
             if (result == InteractionResult.FAIL) {
                 return;
             }
@@ -55,13 +52,14 @@ public class FarmBlockMixin {
         try (var invokers = events.at(serverLevel, blockPos)) {
             var result = invokers.get(FarmBlockMoistureChangeEvent.EVENT).onMoistureChange(serverLevel, blockPos, blockState, i
                     , from);
-            if (result == InteractionResult.FAIL) {
+            if (result != InteractionResult.PASS) {
                 return false;
             }
         }
-        original.call(serverLevel, blockPos, blockState, i);
-        return false;
+        return original.call(serverLevel, blockPos, blockState, i);
     }
+
+
 
 
 }

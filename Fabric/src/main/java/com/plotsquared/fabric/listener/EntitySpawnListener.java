@@ -27,30 +27,29 @@ import com.plotsquared.core.plot.flag.implementations.DoneFlag;
 import com.plotsquared.fabric.data.PlotSquaredDataAttachments;
 import com.plotsquared.fabric.listener.event.EntityOnInsideBlockCallback;
 import com.plotsquared.fabric.listener.event.EntityTeleportToCallback;
+import com.plotsquared.fabric.listener.event.EntityTickEvent;
 import com.plotsquared.fabric.listener.event.HandleMoveVehicleCallback;
 import com.plotsquared.fabric.util.FabricEntityUtil;
 import com.plotsquared.fabric.util.FabricUtil;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerChunkEvents;
-import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
-import net.fabricmc.fabric.api.networking.v1.EntityTrackingEvents;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.GlobalPos;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.server.network.ServerGamePacketListenerImpl;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.level.dimension.BuiltinDimensionTypes;
 import net.minecraft.world.phys.AABB;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import xyz.nucleoid.stimuli.Stimuli;
 import xyz.nucleoid.stimuli.event.entity.EntitySpawnEvent;
-import xyz.nucleoid.stimuli.event.entity.EntityUseEvent;
 
 import java.util.Set;
 
 public class EntitySpawnListener {
+
     private static boolean ignoreTP = false;
     private static boolean hasPlotArea = false;
     private static String areaName = null;
@@ -67,24 +66,29 @@ public class EntitySpawnListener {
             if (plot == null) {
                 if (type == EntityType.ITEM) {
                     if (Settings.Enabled_Components.KILL_ROAD_ITEMS) {
+                        entity.remove(Entity.RemovalReason.DISCARDED);
                         return InteractionResult.FAIL;
                     }
+                    return InteractionResult.PASS;
                 }
                 if (!area.isMobSpawning()) {
                     if (type == EntityType.PLAYER) {
-                        return InteractionResult.FAIL;
+                        return InteractionResult.PASS;
                     }
-                    if (entity.isAlive()) {
+                    if (entity instanceof LivingEntity) {
+                        entity.remove(Entity.RemovalReason.DISCARDED);
                         return InteractionResult.FAIL;
                     }
 
                 }
-                if (!area.isMiscSpawnUnowned() && !entity.isAlive()) {
+                if (!area.isMiscSpawnUnowned() && !(entity instanceof LivingEntity)) {
+                    entity.remove(Entity.RemovalReason.DISCARDED);
                     return InteractionResult.FAIL;
                 }
                 return InteractionResult.PASS;
             }
             if (Settings.Done.RESTRICT_BUILDING && DoneFlag.isDone(plot)) {
+                entity.remove(Entity.RemovalReason.DISCARDED);
                 return InteractionResult.FAIL;
             }
             if (type == EntityType.END_CRYSTAL || type == EntityType.ARMOR_STAND) {
@@ -95,7 +99,7 @@ public class EntitySpawnListener {
             }
             if (type == EntityType.SHULKER) {
                 if (!entity.hasAttached(PlotSquaredDataAttachments.SHULKER_PLOT)) {
-                    entity.setAttached(PlotSquaredDataAttachments.SHULKER_PLOT, plot.getId());
+                    entity.setAttached(PlotSquaredDataAttachments.SHULKER_PLOT, plot.toString());
                 }
             }
             return InteractionResult.PASS;
@@ -121,10 +125,10 @@ public class EntitySpawnListener {
         });
 
         Stimuli.global().listen(EntitySpawnEvent.EVENT, entity -> {
-           if(entity.isVehicle()) {
-               testCreate(entity);
-           }
-           return InteractionResult.PASS;
+            if (entity.isVehicle()) {
+                testCreate(entity);
+            }
+            return InteractionResult.PASS;
         });
 
         HandleMoveVehicleCallback.EVENT.register((serverboundMoveVehiclePacket, serverPlayer) -> {
@@ -145,7 +149,6 @@ public class EntitySpawnListener {
             final PlotArea fromArea = fromLocLocation.getPlotArea();
             Location toLocLocation = FabricUtil.adapt(GlobalPos.of(serverLevel.dimension(), toLocation));
             PlotArea toArea = toLocLocation.getPlotArea();
-
             if (toArea == null) {
                 if (fromLocation.getType() == EntityType.SHULKER && fromArea != null) {
                     return InteractionResult.FAIL;
@@ -168,6 +171,7 @@ public class EntitySpawnListener {
             return InteractionResult.PASS;
         });
 
+        EntityTickEvent.EVENT.register(this::onVehicle);
     }
 
     public static void testNether(final Entity entity) {
@@ -195,7 +199,7 @@ public class EntitySpawnListener {
     public static void test(Entity entity) {
         @NonNull ServerLevel world = entity.getServer().getLevel(entity.level().dimension());
         if (!entity.hasAttached(PlotSquaredDataAttachments.P2)) {
-            if (PlotSquared.get().getPlotAreaManager().hasPlotArea(world.dimension().location().getPath().toString())) {
+            if (PlotSquared.get().getPlotAreaManager().hasPlotArea(world.dimension().location().getPath())) {
                 entity.setAttached(PlotSquaredDataAttachments.P2, GlobalPos.of(world.dimension(), entity.blockPosition()));
             }
         } else {
@@ -229,11 +233,11 @@ public class EntitySpawnListener {
         }
     }
 
-    /* TODO CREATE ENTITY TICK EVENT */
-    /*
-    @EventHandler
-    public void onVehicle(VehicleUpdateEvent event) {
-        testNether(event.getVehicle());
+    public InteractionResult onVehicle(Entity entity) {
+        if (entity.isVehicle()) {
+            testNether(entity);
+        }
+        return InteractionResult.PASS;
     }
-*/
+
 }

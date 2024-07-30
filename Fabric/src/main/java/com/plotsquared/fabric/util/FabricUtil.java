@@ -3,6 +3,7 @@ package com.plotsquared.fabric.util;
 import com.google.inject.Singleton;
 import com.plotsquared.core.PlotSquared;
 import com.plotsquared.core.configuration.caption.Caption;
+import com.plotsquared.core.configuration.caption.LocaleHolder;
 import com.plotsquared.core.location.Location;
 import com.plotsquared.core.player.PlotPlayer;
 import com.plotsquared.core.plot.PlotArea;
@@ -17,16 +18,15 @@ import com.plotsquared.fabric.player.FabricPlayer;
 import com.plotsquared.fabric.player.FabricPlayerManager;
 import com.sk89q.worldedit.fabric.FabricAdapter;
 import com.sk89q.worldedit.math.BlockVector2;
-import com.sk89q.worldedit.util.report.StackTraceReport;
 import com.sk89q.worldedit.world.biome.BiomeType;
 import com.sk89q.worldedit.world.block.BlockCategories;
 import com.sk89q.worldedit.world.block.BlockState;
 import com.sk89q.worldedit.world.block.BlockType;
 import com.sk89q.worldedit.world.block.BlockTypes;
 import com.sk89q.worldedit.world.entity.EntityTypes;
-import jdk.jfr.StackTrace;
-import net.kyori.adventure.platform.fabric.FabricAudiences;
 import net.kyori.adventure.platform.fabric.FabricServerAudiences;
+import net.kyori.adventure.text.TextComponent;
+import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
@@ -35,13 +35,15 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.Style;
+import net.minecraft.network.chat.TextColor;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ChunkHolder;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.AreaEffectCloud;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.ExperienceOrb;
 import net.minecraft.world.entity.LightningBolt;
 import net.minecraft.world.entity.TamableAnimal;
@@ -57,6 +59,7 @@ import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.entity.boss.wither.WitherBoss;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.decoration.HangingEntity;
+import net.minecraft.world.entity.item.FallingBlockEntity;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.item.PrimedTnt;
 import net.minecraft.world.entity.monster.Ghast;
@@ -72,12 +75,9 @@ import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.entity.vehicle.AbstractMinecart;
 import net.minecraft.world.entity.vehicle.Boat;
 import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.FallingBlock;
 import net.minecraft.world.level.block.SignBlock;
 import net.minecraft.world.level.block.WallSignBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.entity.SignBlockEntity;
 import net.minecraft.world.level.block.entity.SignText;
 import net.minecraft.world.level.block.state.properties.WoodType;
@@ -91,6 +91,7 @@ import org.checkerframework.checker.nullness.qual.NonNull;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
@@ -105,9 +106,19 @@ import java.util.stream.Stream;
 @Singleton
 public class FabricUtil extends WorldUtil {
 
+    private volatile FabricServerAudiences adventure;
+
+    public FabricServerAudiences adventure() {
+        FabricServerAudiences ret = this.adventure;
+        if (ret == null) {
+            throw new IllegalStateException("Tried to access Adventure without a running server!");
+        }
+        return ret;
+    }
+
     public static final FabricServerAudiences FABRIC_AUDIENCES =
             FabricServerAudiences.of(FabricPlatform.SERVER);
-    public static final LegacyComponentSerializer LEGACY_COMPONENT_SERIALIZER = LegacyComponentSerializer.legacyAmpersand();
+    public static final LegacyComponentSerializer LEGACY_COMPONENT_SERIALIZER = LegacyComponentSerializer.legacySection();
     public static final MiniMessage MINI_MESSAGE = MiniMessage.builder().build();
     private static final Logger LOGGER = LogManager.getLogger("PlotSquared/" + FabricUtil.class.getSimpleName());
     private final Collection<BlockType> tileEntityTypes = new HashSet<>();
@@ -201,7 +212,7 @@ public class FabricUtil extends WorldUtil {
     }
 
     private static void ensureLoaded(final @NonNull Location location, final @NonNull Consumer<LevelChunk> chunkConsumer) {
-        Objects.requireNonNull(getWorld(location.getWorldName())).hasChunk(location.getX() >> 4, location.getZ() >> 4);
+        //Objects.requireNonNull(getWorld(location.getWorldName())).hasChunk(location.getX() >> 4, location.getZ() >> 4);
         // getWorld(location.getWorldName()).getChunkSource().getChunkFuture()
         //PaperLib.getChunkAtAsync(adapt(location), true).thenAccept(chunk -> ensureMainThread(chunkConsumer, chunk));
     }
@@ -232,7 +243,9 @@ public class FabricUtil extends WorldUtil {
 
     @Override
     public void getBiome(final @NonNull String world, final int x, final int z, final @NonNull Consumer<BiomeType> result) {
-        ensureLoaded(world, x, z, chunk -> result.accept(FabricAdapter.adapt(getWorld(world)).getBiome(BlockVector2.at(x, z))));
+        /*ensureLoaded(world, x, z,
+                chunk -> */
+        result.accept(getWeWorld(world).getBiome(BlockVector2.at(x, z)));
     }
 
     @Override
@@ -242,30 +255,30 @@ public class FabricUtil extends WorldUtil {
 
     @Override
     public void getHighestBlock(final @NonNull String world, final int x, final int z, final @NonNull IntConsumer result) {
-        ensureLoaded(world, x, z, chunk -> {
-            final ServerLevel fabricWorld = Objects.requireNonNull(getWorld(world));
-            // Skip top and bottom block
-            int air = 1;
-            int maxY = FabricWorld.getMaxWorldHeight(fabricWorld);
-            int minY = FabricWorld.getMinWorldHeight(fabricWorld);
-            for (int y = maxY - 1; y >= minY; y--) {
-                net.minecraft.world.level.block.state.BlockState block = fabricWorld.getBlockState(new BlockPos(x, y, z));
-                if (block.isSolid()) {
-                    if (air > 1) {
-                        result.accept(y);
-                        return;
-                    }
-                    air = 0;
-                } else {
-                    if (block.liquid()) {
-                        result.accept(y);
-                        return;
-                    }
-                    air++;
+        //ensureLoaded(world, x, z, chunk -> {
+        final ServerLevel fabricWorld = Objects.requireNonNull(getWorld(world));
+        // Skip top and bottom block
+        int air = 1;
+        int maxY = FabricWorld.getMaxWorldHeight(fabricWorld);
+        int minY = FabricWorld.getMinWorldHeight(fabricWorld);
+        for (int y = maxY - 1; y >= minY; y--) {
+            net.minecraft.world.level.block.state.BlockState block = fabricWorld.getBlockState(new BlockPos(x, y, z));
+            if (block.isSolid()) {
+                if (air > 1) {
+                    result.accept(y);
+                    return;
                 }
+                air = 0;
+            } else {
+                if (block.liquid()) {
+                    result.accept(y);
+                    return;
+                }
+                air++;
             }
-            result.accept(fabricWorld.getMaxBuildHeight() - 1);
-        });
+        }
+        result.accept(fabricWorld.getMaxBuildHeight() - 1);
+        //});
     }
 
     @Override
@@ -352,56 +365,105 @@ public class FabricUtil extends WorldUtil {
             final @NonNull Location location, final @NonNull Caption[] lines,
             final @NonNull TagResolver... replacements
     ) {
-        ensureLoaded(location.getWorldName(), location.getX(), location.getZ(), chunk -> {
-            PlotArea area = location.getPlotArea();
-            final ServerLevel world = getWorld(location.getWorldName());
-            BlockPos signBlockPos = new BlockPos(location.getX(), location.getY(), location.getZ());
-            final net.minecraft.world.level.block.state.BlockState blockstate = world.getBlockState(signBlockPos);
-            final Block block = blockstate.getBlock();
-            if (block instanceof WallSignBlock wallSignBlock) {
-                Direction facing = Direction.NORTH;
-                if (!world.getBlockState(new BlockPos(location.getX(), location.getY(), location.getZ() + 1))
+        PlotArea area = location.getPlotArea();
+        final ServerLevel world = getWorld(location.getWorldName());
+        BlockPos signBlockPos = new BlockPos(location.getX(), location.getY(), location.getZ());
+        final net.minecraft.world.level.block.state.BlockState blockstate = world.getBlockState(signBlockPos);
+        final Block block = blockstate.getBlock();
+        if (!(block instanceof SignBlock wallSignBlock)) {
+            Direction facing = Direction.NORTH;
+            if (!world.getBlockState(new BlockPos(location.getX(), location.getY(), location.getZ() + 1))
+                    .blocksMotion()) {
+                if (world.getBlockState(new BlockPos(location.getX() - 1, location.getY(), location.getZ()))
                         .blocksMotion()) {
-                    if (world.getBlockState(new BlockPos(location.getX() - 1, location.getY(), location.getZ()))
-                            .blocksMotion()) {
-                        facing = Direction.EAST;
-                    } else if (world.getBlockState(new BlockPos(location.getX() + 1, location.getY(), location.getZ()))
-                            .blocksMotion()) {
-                        facing = Direction.WEST;
-                    } else if (world.getBlockState(new BlockPos(location.getX(), location.getY(), location.getZ() - 1))
-                            .blocksMotion()) {
-                        facing = Direction.SOUTH;
-                    }
+                    facing = Direction.EAST;
+                } else if (world.getBlockState(new BlockPos(location.getX() + 1, location.getY(), location.getZ()))
+                        .blocksMotion()) {
+                    facing = Direction.WEST;
+                } else if (world.getBlockState(new BlockPos(location.getX(), location.getY(), location.getZ() - 1))
+                        .blocksMotion()) {
+                    facing = Direction.SOUTH;
                 }
-                /* TODO CHECK ON THIS */
-                WoodType woodType =
-                        WoodType.values().filter(woodType1 -> area
-                                .getSignMaterial()
-                                .toUpperCase()
-                                .startsWith(woodType1.name())).findFirst().get();
-                net.minecraft.world.level.block.state.BlockState sign = BuiltInRegistries.BLOCK.get(new ResourceLocation(
-                        "minecraft",
-                        area.getSignMaterial().toLowerCase()
-                )).defaultBlockState();
-                sign = sign.setValue(WallSignBlock.FACING, facing);
-                world.setBlockAndUpdate(signBlockPos, sign);
-                if (sign.hasBlockEntity()) {
-                    SignBlockEntity signBlockEntity = world.getBlockEntity(signBlockPos, BlockEntityType.SIGN).get();
-                    SignText signText = new SignText();
-                    signText.setMessage(0, Component.literal(lines[0].toString()));
-                    signText.setMessage(1, Component.literal(lines[1].toString()));
-                    signText.setMessage(2, Component.literal(lines[2].toString()));
-                    signText.setMessage(3, Component.literal(lines[3].toString()));
-                    signBlockEntity.setText(signText, true);
-                } else {
-                    throw new RuntimeException("SignBlockEntity not found.");
-                }
+            }
+            WoodType woodType =
+                    WoodType.values().filter(woodType1 -> area
+                            .getSignMaterial()
+                            .startsWith(woodType1.name().toUpperCase())).findFirst().get();
+            net.minecraft.world.level.block.state.BlockState sign = BuiltInRegistries.BLOCK.get(new ResourceLocation(
+                    "minecraft",
+                    area.getSignMaterial().toLowerCase()
+            )).defaultBlockState();
+            sign = sign.setValue(WallSignBlock.FACING, facing);
+            world.setBlock(signBlockPos, sign, 3, 512);
+            if (world.getBlockEntity(signBlockPos) != null) {
+                List<MutableComponent> signTextLines = Arrays
+                        .stream(lines)
+                        .map(caption -> convertToMinecraftText(MINI_MESSAGE.deserialize(
+                                caption.getComponent(LocaleHolder.console()),
+                                replacements
+                        )))
+                        .toList();
 
+                for (int i = 0; i < 4; i++) {
+                    SignText text = ((SignBlockEntity) world.getBlockEntity(signBlockPos)).getFrontText().setMessage(
+                            i,
+                            signTextLines.get(i)
+                    );
+                    ((SignBlockEntity) world.getBlockEntity(signBlockPos)).setText(text, true);
+                }
             }
-            if (!(block instanceof WallSignBlock)) {
-                throw new RuntimeException("Something went wrong generating a sign");
+        }
+    }
+
+    public static MutableComponent convertToMinecraftText(net.kyori.adventure.text.Component adventureComponent) {
+        if (adventureComponent instanceof TextComponent) {
+            TextComponent textComponent = (TextComponent) adventureComponent;
+
+            // Convert the content of the TextComponent
+            MutableComponent minecraftText = Component.literal(textComponent.content());
+
+            // Convert and apply the style
+            Style style = convertStyle(textComponent.style());
+            minecraftText.setStyle(style);
+
+            // Recursively convert children
+            for (net.kyori.adventure.text.Component child : textComponent.children()) {
+                minecraftText.append(convertToMinecraftText(child));
             }
-        });
+
+            return minecraftText;
+        }
+
+        // Handle other types of components if needed
+        return Component.literal(""); // Return an empty text for unsupported components
+    }
+
+    private static Style convertStyle(net.kyori.adventure.text.format.Style adventureStyle) {
+        Style style = Style.EMPTY;
+
+        // Convert color
+        if (adventureStyle.color() != null) {
+            style = style.withColor(TextColor.fromRgb(adventureStyle.color().value()));
+        }
+
+        // Convert other formatting
+        if (adventureStyle.hasDecoration(TextDecoration.BOLD)) {
+            style = style.withBold(true);
+        }
+        if (adventureStyle.hasDecoration(TextDecoration.ITALIC)) {
+            style = style.withItalic(true);
+        }
+        if (adventureStyle.hasDecoration(TextDecoration.UNDERLINED)) {
+            style = style.withUnderlined(true);
+        }
+        if (adventureStyle.hasDecoration(TextDecoration.STRIKETHROUGH)) {
+            style = style.withStrikethrough(true);
+        }
+        if (adventureStyle.hasDecoration(TextDecoration.OBFUSCATED)) {
+            style = style.withObfuscated(true);
+        }
+
+        return style;
     }
 
     @Override
@@ -422,13 +484,13 @@ public class FabricUtil extends WorldUtil {
 
     @Override
     public void getBlock(final @NonNull Location location, final @NonNull Consumer<BlockState> result) {
-        ensureLoaded(location, chunk -> {
-            final ServerLevel world = getWorld(location.getWorldName());
-            final Block block = Objects.requireNonNull(world).getBlockState(new BlockPos(location.getX(), location.getY(),
-                    location.getZ()
-            )).getBlock();
-            result.accept(Objects.requireNonNull(FabricAdapter.adapt(block)).getDefaultState());
-        });
+        //ensureLoaded(location, chunk -> {
+        final ServerLevel world = getWorld(location.getWorldName());
+        final Block block = Objects.requireNonNull(world).getBlockState(new BlockPos(location.getX(), location.getY(),
+                location.getZ()
+        )).getBlock();
+        result.accept(Objects.requireNonNull(FabricAdapter.adapt(block)).getDefaultState());
+        // });
     }
 
     @Override
@@ -465,7 +527,6 @@ public class FabricUtil extends WorldUtil {
         FabricPlatform.SERVER.getPlayerList().getPlayer(player.getUUID()).getFoodData().setFoodLevel(foodLevel);
     }
 
-    /* TODO check on this */
     @Override
     public @NonNull Set<com.sk89q.worldedit.world.entity.EntityType> getTypesInCategory(final @NonNull String category) {
         final Collection<Class<?>> allowedInterfaces = new HashSet<>();
@@ -501,7 +562,7 @@ public class FabricUtil extends WorldUtil {
             case "projectile" -> allowedInterfaces.add(Projectile.class);
             case "other" -> {
                 allowedInterfaces.add(ArmorStand.class);
-                allowedInterfaces.add(FallingBlock.class);
+                allowedInterfaces.add(FallingBlockEntity.class);
                 allowedInterfaces.add(ItemEntity.class);
                 allowedInterfaces.add(PrimedTnt.class);
                 allowedInterfaces.add(AreaEffectCloud.class);
@@ -516,13 +577,17 @@ public class FabricUtil extends WorldUtil {
         }
         final Set<com.sk89q.worldedit.world.entity.EntityType> types = new HashSet<>();
         outer:
-        for (final EntityType<?> bukkitType : BuiltInRegistries.ENTITY_TYPE.stream().toList()) {
-            final Class<? extends Entity> entityClass = bukkitType.getBaseClass();
-            for (final Class<?> allowedInterface : allowedInterfaces) {
-                if (allowedInterface.isAssignableFrom(entityClass)) {
-                    types.add(EntityTypes.get(bukkitType.getDescriptionId()));
-                    continue outer;
+        for (final net.minecraft.world.entity.EntityType<? extends Entity> fabricType :
+                BuiltInRegistries.ENTITY_TYPE.stream().toList()) {
+            try {
+                final Class<?> entityClass = fabricType.create(FabricPlatform.SERVER.overworld()).getClass();
+                for (final Class<?> allowedInterface : allowedInterfaces) {
+                    if (allowedInterface.isAssignableFrom(entityClass)) {
+                        types.add(EntityTypes.get(fabricType.toShortString()));
+                        continue outer;
+                    }
                 }
+            } catch (Exception ignored) {
             }
         }
         return types;
@@ -621,12 +686,13 @@ public class FabricUtil extends WorldUtil {
     }
 
     public static List<Entity> getEntitiesInChunk(ServerLevel world, LevelChunk chunk) {
-        return world.getEntitiesOfClass(
-                Entity.class,
+        List<Entity> entities = new ArrayList<>();
+        world.getEntities().get(
                 new AABB(chunk.getPos().getMinBlockX(), chunk.getMaxBuildHeight(), chunk.getPos().getMinBlockZ(),
                         chunk.getPos().getMaxBlockX(), chunk.getMaxBuildHeight(), chunk.getPos().getMaxBlockZ()
-                ),
-                entity -> true
+                ), entities::add
         );
+        return entities;
     }
+
 }

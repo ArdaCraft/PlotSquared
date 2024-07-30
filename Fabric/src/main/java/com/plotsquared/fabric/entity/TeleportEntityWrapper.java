@@ -18,12 +18,7 @@
  */
 package com.plotsquared.fabric.entity;
 /*
-import com.plotsquared.bukkit.BukkitPlatform;
-import org.bukkit.Chunk;
-import org.bukkit.Location;
-import org.bukkit.World;
-import org.bukkit.entity.Entity;
-import org.bukkit.metadata.FixedMetadataValue;
+import com.plotsquared.fabric.FabricPlatform;
 
 public class TeleportEntityWrapper extends EntityWrapper {
 
@@ -113,4 +108,5 @@ public class TeleportEntityWrapper extends EntityWrapper {
         return chunk.getWorld().getChunkAt(chunk.getX() + dx, chunk.getZ() + dz);
     }
 
-}*/
+}
+*/

@@ -28,6 +28,7 @@ import com.plotsquared.core.player.PlotPlayer;
 import com.plotsquared.core.plot.Plot;
 import com.plotsquared.core.plot.PlotArea;
 import com.plotsquared.core.plot.flag.implementations.BlockBurnFlag;
+import com.plotsquared.core.plot.flag.implementations.BlockIgnitionFlag;
 import com.plotsquared.core.plot.flag.implementations.BreakFlag;
 import com.plotsquared.core.plot.flag.implementations.ConcreteHardenFlag;
 import com.plotsquared.core.plot.flag.implementations.CoralDryFlag;
@@ -40,6 +41,8 @@ import com.plotsquared.core.plot.flag.implementations.IceFormFlag;
 import com.plotsquared.core.plot.flag.implementations.IceMeltFlag;
 import com.plotsquared.core.plot.flag.implementations.InstabreakFlag;
 import com.plotsquared.core.plot.flag.implementations.KelpGrowFlag;
+import com.plotsquared.core.plot.flag.implementations.LeafDecayFlag;
+import com.plotsquared.core.plot.flag.implementations.LiquidFlowFlag;
 import com.plotsquared.core.plot.flag.implementations.MycelGrowFlag;
 import com.plotsquared.core.plot.flag.implementations.PlaceFlag;
 import com.plotsquared.core.plot.flag.implementations.SnowFormFlag;
@@ -59,6 +62,7 @@ import com.plotsquared.fabric.listener.event.FarmBlockMoistureChangeEvent;
 import com.plotsquared.fabric.listener.event.LevelSetBlockAndUpdateCallback;
 import com.plotsquared.fabric.listener.event.LevelSetBlockEvent;
 import com.plotsquared.fabric.listener.event.PistonMoveBlocksEvent;
+import com.plotsquared.fabric.listener.event.SpongeAbsorbEvent;
 import com.plotsquared.fabric.player.FabricPlayer;
 import com.plotsquared.fabric.util.FabricUtil;
 import com.sk89q.worldedit.WorldEdit;
@@ -73,6 +77,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;
 import net.minecraft.core.Vec3i;
 import net.minecraft.core.cauldron.CauldronInteraction;
+import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
@@ -92,6 +97,7 @@ import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.DispenserBlock;
 import net.minecraft.world.level.block.DropperBlock;
 import net.minecraft.world.level.block.FallingBlock;
@@ -100,7 +106,6 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.DispenserBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkGenerator;
-import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.levelgen.feature.ConfiguredFeature;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import org.jetbrains.annotations.Nullable;
@@ -112,6 +117,8 @@ import xyz.nucleoid.stimuli.event.block.CoralDeathEvent;
 import xyz.nucleoid.stimuli.event.block.DispenserActivateEvent;
 import xyz.nucleoid.stimuli.event.world.ExplosionDetonatedEvent;
 import xyz.nucleoid.stimuli.event.world.FireTickEvent;
+import xyz.nucleoid.stimuli.event.world.FluidFlowEvent;
+import xyz.nucleoid.stimuli.event.world.SnowFallEvent;
 
 import java.util.Iterator;
 import java.util.List;
@@ -141,7 +148,7 @@ public class BlockEventListener {
         PlayerBlockBreakEvents.BEFORE.register(this::blockDestroy);
         Stimuli.global().listen(BlockRandomTickEvent.EVENT, this::onBlockSpread);
         CauldronInteractionInteractCallback.EVENT.register(this::onCauldronEmpty);
-        LevelSetBlockEvent.EVENT.register(this::onBlockForm);
+        LevelSetBlockAndUpdateCallback.EVENT.register(this::onBlockForm);
         LevelSetBlockAndUpdateCallback.EVENT.register(this::onEntityBlockForm);
         Stimuli.global().listen(BlockPunchEvent.EVENT, this::onBlockDamage);
         Stimuli.global().listen(CoralDeathEvent.EVENT, this::onCoralDeath);
@@ -152,10 +159,13 @@ public class BlockEventListener {
         Stimuli.global().listen(DispenserActivateEvent.EVENT, this::onBlockDispense);
         Stimuli.global().listen(PistonMoveBlocksEvent.EVENT, this::onBlockPistonExtend);
         Stimuli.global().listen(PistonMoveBlocksEvent.EVENT, this::onBlockPistonRetract);
-        /* TODO MAKE SURE THIS ACTUALLY WORKS */
         ConfiguredFeaturePlaceEvent.EVENT.register(this::onStructureGrow);
         Stimuli.global().listen(ExplosionDetonatedEvent.EVENT, this::onBigBoom);
         Stimuli.global().listen(FireTickEvent.EVENT, this::onBlockBurn);
+        LevelSetBlockEvent.EVENT.register(this::onBlockIgnite);
+        Stimuli.global().listen(BlockRandomTickEvent.EVENT, this::onLeavesDecay);
+        Stimuli.global().listen(SpongeAbsorbEvent.EVENT, this::onSpongeAbsorb);
+        Stimuli.global().listen(FluidFlowEvent.EVENT, this::onLiquidFlow);
     }
 
     public static void sendBlockChange(final GlobalPos bloc, final net.minecraft.world.level.block.state.BlockState data) {
@@ -178,8 +188,7 @@ public class BlockEventListener {
     }
 
     public InteractionResult blockCreate(
-            ServerPlayer player, ServerLevel world, BlockPos pos, BlockState state,
-            UseOnContext context
+            ServerPlayer player, ServerLevel world, BlockPos pos, BlockState state, UseOnContext context
     ) {
         Location location = FabricUtil.adapt(GlobalPos.of(world.dimension(), pos));
         PlotArea area = location.getPlotArea();
@@ -257,6 +266,88 @@ public class BlockEventListener {
         }
         return InteractionResult.PASS;
     }
+
+    public InteractionResult blockCreateAxiom(
+            ServerPlayer player, ServerLevel world, BlockPos pos, BlockState state,
+            @Nullable UseOnContext context
+    ) {
+        Location location = FabricUtil.adapt(GlobalPos.of(world.dimension(), pos));
+        PlotArea area = location.getPlotArea();
+        if (area == null) {
+            return InteractionResult.PASS;
+        }
+        FabricPlayer pp = FabricUtil.adapt(player);
+        Plot plot = area.getPlot(location);
+        if (plot != null) {
+            if (area.notifyIfOutsideBuildArea(pp, location.getY())) {
+                /*pp.sendMessage(
+                        TranslatableCaption.of("height.height_limit"),
+                        TagResolver.builder()
+                                .tag("minheight", Tag.inserting(Component.text(area.getMinBuildHeight())))
+                                .tag("maxheight", Tag.inserting(Component.text(area.getMaxBuildHeight())))
+                                .build()
+                );*/
+                return InteractionResult.FAIL;
+            }
+            if (!plot.hasOwner()) {
+                if (!pp.hasPermission(Permission.PERMISSION_ADMIN_BUILD_UNOWNED)) {
+                    /*pp.sendMessage(
+                            TranslatableCaption.of("permission.no_permission_event"),
+                            TagResolver.resolver(
+                                    "node",
+                                    Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_UNOWNED)
+                            )
+                    );*/
+                    return InteractionResult.FAIL;
+                }
+            } else if (!plot.isAdded(pp.getUUID())) {
+                List<BlockTypeWrapper> place = plot.getFlag(PlaceFlag.class);
+                if (place != null) {
+                    if (place.contains(
+                            BlockTypeWrapper.get(FabricAdapter.adapt(state.getBlock())))) {
+                        return InteractionResult.SUCCESS;
+                    }
+                }
+                if (!pp.hasPermission(Permission.PERMISSION_ADMIN_BUILD_OTHER)) {
+                    /*pp.sendMessage(
+                            TranslatableCaption.of("permission.no_permission_event"),
+                            TagResolver.resolver(
+                                    "node",
+                                    Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_OTHER)
+                            )
+                    );
+                    plot.debug(player.getName() + " could not place " + state.getBlock().getName()
+                            + " because of the place = false");*/
+                    return InteractionResult.FAIL;
+                }
+            } else if (Settings.Done.RESTRICT_BUILDING && DoneFlag.isDone(plot)) {
+                if (!pp.hasPermission(Permission.PERMISSION_ADMIN_BUILD_OTHER)) {
+                   /* pp.sendMessage(
+                            TranslatableCaption.of("done.building_restricted")
+                    );*/
+                    return InteractionResult.FAIL;
+                }
+            }
+            if (plot.getFlag(DisablePhysicsFlag.class)) {
+                if (state.getBlock() instanceof FallingBlock) {
+                    sendBlockChange(GlobalPos.of(world.dimension(), pos), state);
+                   /* plot.debug(state.getBlock().getName()
+                            + " did not fall because of disable-physics = true");*/
+                }
+            }
+        } else if (!pp.hasPermission(Permission.PERMISSION_ADMIN_BUILD_ROAD)) {
+           /* pp.sendMessage(
+                    TranslatableCaption.of("permission.no_permission_event"),
+                    TagResolver.resolver(
+                            "node",
+                            Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_ROAD)
+                    )
+            );*/
+            return InteractionResult.FAIL;
+        }
+        return InteractionResult.SUCCESS;
+    }
+
 
     public boolean blockDestroy(
             Level world,
@@ -367,7 +458,10 @@ public class BlockEventListener {
         if (plot == null) {
             return InteractionResult.PASS;
         }
-        switch (blockState.getBlock().toString().substring(blockState.getBlock().toString().indexOf(":")).toUpperCase()) {
+        switch (blockState.getBlock().toString().substring(
+                blockState.getBlock().toString().indexOf(":") + 1,
+                blockState.getBlock().toString().length() - 1
+        ).toUpperCase()) {
             case "GRASS_BLOCK":
                 if (!plot.getFlag(GrassGrowFlag.class)) {
                     plot.debug("Grass could not grow because grass-grow = false");
@@ -467,8 +561,7 @@ public class BlockEventListener {
     public InteractionResult onBlockForm(
             BlockPos blockPos,
             BlockState blockState,
-            int i,
-            int j,
+            LivingEntity livingEntity,
             Level level
     ) {
         Location location = FabricUtil.adapt(GlobalPos.of(level.dimension(), blockPos));
@@ -481,7 +574,7 @@ public class BlockEventListener {
         }
         Plot plot = area.getOwnedPlot(location);
         if (plot == null) {
-            return InteractionResult.FAIL;
+            return InteractionResult.PASS;
         }
         if (!area.buildRangeContainsY(location.getY())) {
             return InteractionResult.FAIL;
@@ -511,7 +604,8 @@ public class BlockEventListener {
     public InteractionResult onEntityBlockForm(
             BlockPos blockPos,
             BlockState blockState,
-            LivingEntity entity
+            LivingEntity entity,
+            Level level
     ) {
         String world = entity.level().dimension().location().getPath();
         if (!this.plotAreaManager.hasPlotArea(world)) {
@@ -524,7 +618,7 @@ public class BlockEventListener {
         }
         Plot plot = area.getOwnedPlot(location);
         if (plot == null) {
-            return InteractionResult.FAIL;
+            return InteractionResult.PASS;
         }
         Class<? extends BooleanFlag<?>> flag;
         if (blockState.is(SNOW)) {
@@ -621,7 +715,7 @@ public class BlockEventListener {
         return InteractionResult.FAIL;
     }
 
-    public InteractionResult onSoilDry(Entity entity, BlockState blockState, Level level, BlockPos blockPos, BlockState from) {
+    public InteractionResult onSoilDry(Entity entity, BlockState blockState, Level level, BlockPos blockPos) {
         Location location = FabricUtil.adapt(GlobalPos.of(level.dimension(), blockPos));
         PlotArea area = location.getPlotArea();
         if (area == null) {
@@ -723,6 +817,85 @@ public class BlockEventListener {
             plot.debug("Soil could not dry because soil-dry = false");
             return InteractionResult.FAIL;
         }
+        return InteractionResult.PASS;
+    }
+
+    public InteractionResult onLiquidFlow(
+            ServerLevel world, BlockPos fluidPos, BlockState fluidBlock, Direction flowDirection,
+            BlockPos flowTo, BlockState flowToBlock
+    ) {
+        Block fromBlock = fluidBlock.getBlock();
+
+        // Check liquid flow flag inside of origin plot too
+        final Location fromLocation = FabricUtil.adapt(GlobalPos.of(world.dimension(), fluidPos));
+        final PlotArea fromArea = fromLocation.getPlotArea();
+        if (fromArea != null) {
+            final Plot fromPlot = fromArea.getOwnedPlot(fromLocation);
+            if (fromPlot != null && fromPlot.getFlag(LiquidFlowFlag.class) == LiquidFlowFlag.FlowStatus.DISABLED && fluidBlock.liquid()) {
+                fromPlot.debug("Liquid could not flow because liquid-flow = disabled");
+                return InteractionResult.FAIL;
+            }
+        }
+        Block toBlock = flowToBlock.getBlock();
+        Location toLocation = FabricUtil.adapt(GlobalPos.of(world.dimension(), flowTo));
+        PlotArea toArea = toLocation.getPlotArea();
+        if (toArea == null) {
+            return InteractionResult.PASS;
+        }
+        if (!toArea.buildRangeContainsY(toLocation.getY())) {
+            return InteractionResult.FAIL;
+        }
+        Plot toPlot = toArea.getOwnedPlot(toLocation);
+
+        if (toPlot != null) {
+            if (!toArea.contains(fromLocation.getX(), fromLocation.getZ()) || !Objects.equals(
+                    toPlot,
+                    toArea.getOwnedPlot(fromLocation)
+            )) {
+                return InteractionResult.FAIL;
+            }
+            if (toPlot.getFlag(LiquidFlowFlag.class) == LiquidFlowFlag.FlowStatus.ENABLED && fluidBlock.liquid()) {
+                return InteractionResult.PASS;
+            }
+            if (toPlot.getFlag(DisablePhysicsFlag.class)) {
+                toPlot.debug(fluidBlock.getBlock() + " could not update because disable-physics = true");
+                return InteractionResult.FAIL;
+            }
+            if (toPlot.getFlag(LiquidFlowFlag.class) == LiquidFlowFlag.FlowStatus.DISABLED && fluidBlock.liquid()) {
+                toPlot.debug("Liquid could not flow because liquid-flow = disabled");
+                return InteractionResult.FAIL;
+            }
+        } else if (!toArea.contains(fromLocation.getX(), fromLocation.getZ()) || !Objects.equals(
+                null,
+                toArea.getOwnedPlot(fromLocation)
+        )) {
+            return InteractionResult.FAIL;
+        } else if (fluidBlock.liquid()) {
+            final GlobalPos location = GlobalPos.of(world.dimension(), fluidPos);
+
+            /*
+                X = block location
+                A-H = potential plot locations
+               Z
+               ^
+               |    A B C
+               o    D X E
+               |    F G H
+               v
+                <-----O-----> x
+             */
+            if (FabricUtil.adapt(GlobalPos.of(world.dimension(), fluidPos.offset(-1, 0, 1))  /* A */).getPlot() != null
+                    || FabricUtil.adapt(GlobalPos.of(world.dimension(), fluidPos.offset(1, 0, 0))   /* B */).getPlot() != null
+                    || FabricUtil.adapt(GlobalPos.of(world.dimension(), fluidPos.offset(1, 0, 1))  /* C */).getPlot() != null
+                    || FabricUtil.adapt(GlobalPos.of(world.dimension(), fluidPos.offset(-1, 0, 0))  /* D */).getPlot() != null
+                    || FabricUtil.adapt(GlobalPos.of(world.dimension(), fluidPos.offset(1, 0, 0)) /* E */).getPlot() != null
+                    || FabricUtil.adapt(GlobalPos.of(world.dimension(), fluidPos.offset(-1, 0, -1)) /* F */).getPlot() != null
+                    || FabricUtil.adapt(GlobalPos.of(world.dimension(), fluidPos.offset(0, 0, -1)) /* G */).getPlot() != null
+                    || FabricUtil.adapt(GlobalPos.of(world.dimension(), fluidPos.offset(1, 0, 1))  /* H */).getPlot() != null) {
+                return InteractionResult.FAIL;
+            }
+        }
+
         return InteractionResult.PASS;
     }
 
@@ -875,7 +1048,7 @@ public class BlockEventListener {
 
     public InteractionResult onStructureGrow(
             WorldGenLevel worldGenLevel, ChunkGenerator chunkGenerator, RandomSource randomSource, BlockPos blockPos,
-            ConfiguredFeature configuredFeature
+            ConfiguredFeature<?, ?> configuredFeature
     ) {
         Map<BlockPos, BlockState> blocks = configuredFeature.feature().plotSquared$getBlocksSet();
         Map<BlockPos, Integer> blockNumbers = configuredFeature.feature().plotSquared$getBlockNumbers();
@@ -974,6 +1147,10 @@ public class BlockEventListener {
             if (plot != null) {
                 plot.debug("Explosion was cancelled because explosion = false");
             }
+            if (Settings.General.ALWAYS_SHOW_EXPLOSIONS) {
+                explosion.getDirectSourceEntity().level().addParticle(ParticleTypes.EXPLOSION, location.getX(), location.getY()
+                        , location.getZ(), 0.0, 0.0, 0.0);
+            }
             return InteractionResult.FAIL;
         }
         explosion.getToBlow().removeIf(blox -> !plot.equals(area.getOwnedPlot(FabricUtil.adapt(GlobalPos.of(explosion
@@ -1001,120 +1178,35 @@ public class BlockEventListener {
         return InteractionResult.PASS;
     }
 
-    /*public void onBlockIgnite(BlockIgniteEvent event) {
-        Player player = event.getPlayer();
-        Entity ignitingEntity = event.getIgnitingEntity();
-        Block block = event.getBlock();
-        BlockIgniteEvent.IgniteCause igniteCause = event.getCause();
-        Location location1 = FabricUtil.adapt(block.getLocation());
-        PlotArea area = location1.getPlotArea();
-        if (area == null) {
-            return;
-        }
-        if (igniteCause == BlockIgniteEvent.IgniteCause.LIGHTNING) {
-            event.setCancelled(true);
-            return;
-        }
+    public InteractionResult onBlockIgnite(BlockPos blockPos, BlockState blockState, int i, Level level) {
+        if(blockState.getBlock() == Blocks.FIRE) {
+            Location location1 = FabricUtil.adapt(GlobalPos.of(level.dimension(), blockPos));
+            PlotArea area = location1.getPlotArea();
+            if (area == null) {
+                return InteractionResult.PASS;
+            }
 
-        Plot plot = area.getOwnedPlot(location1);
-        if (player != null) {
-            FabricPlayer pp = FabricUtil.adapt(player);
-            if (area.notifyIfOutsideBuildArea(pp, location1.getY())) {
-                event.setCancelled(true);
-                return;
-            }
+            Plot plot = area.getOwnedPlot(location1);
             if (plot == null) {
-                if (!PlotFlagUtil.isAreaRoadFlagsAndFlagEquals(area, BlockIgnitionFlag.class, true) && !pp.hasPermission(
-                        Permission.PERMISSION_ADMIN_BUILD_ROAD
-                )) {
-                    pp.sendMessage(
-                            TranslatableCaption.of("permission.no_permission_event"),
-                            TagResolver.resolver(
-                                    "node",
-                                    Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_ROAD)
-                            )
-                    );
-                    event.setCancelled(true);
-                }
-            } else if (!plot.hasOwner()) {
-                if (!PlotFlagUtil.isAreaRoadFlagsAndFlagEquals(area, BlockIgnitionFlag.class, true) && !pp.hasPermission(
-                        Permission.PERMISSION_ADMIN_BUILD_UNOWNED
-                )) {
-                    pp.sendMessage(
-                            TranslatableCaption.of("permission.no_permission_event"),
-                            TagResolver.resolver(
-                                    "node",
-                                    Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_UNOWNED)
-                            )
-                    );
-                    event.setCancelled(true);
-                }
-            } else if (!plot.isAdded(pp.getUUID())) {
-                if (!pp.hasPermission(Permission.PERMISSION_ADMIN_BUILD_OTHER)) {
-                    pp.sendMessage(
-                            TranslatableCaption.of("permission.no_permission_event"),
-                            TagResolver.resolver(
-                                    "node",
-                                    Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_OTHER)
-                            )
-                    );
-                    event.setCancelled(true);
-                }
-            } else if (!plot.getFlag(BlockIgnitionFlag.class)) {
-                event.setCancelled(true);
-                plot.debug("Block ignition was cancelled because block-ignition = false");
+                return InteractionResult.PASS;
             }
-        } else {
-            if (plot == null) {
-                event.setCancelled(true);
-                return;
-            }
-            if (ignitingEntity != null) {
-                if (!plot.getFlag(BlockIgnitionFlag.class)) {
-                    event.setCancelled(true);
-                    plot.debug("Block ignition was cancelled because block-ignition = false");
-                    return;
-                }
-                if (igniteCause == BlockIgniteEvent.IgniteCause.FIREBALL) {
-                    if (ignitingEntity instanceof Fireball) {
-                        Projectile fireball = (Projectile) ignitingEntity;
-                        Location location = null;
-                        if (fireball.getShooter() instanceof Entity shooter) {
-                            location = FabricUtil.adapt(shooter.getLocation());
-                        } else if (fireball.getShooter() instanceof BlockProjectileSource) {
-                            Block shooter =
-                                    ((BlockProjectileSource) fireball.getShooter()).getBlock();
-                            location = FabricUtil.adapt(shooter.getLocation());
-                        }
-                        if (location != null && !plot.equals(location.getPlot())) {
-                            event.setCancelled(true);
-                        }
-                    }
-                }
 
-            } else if (event.getIgnitingBlock() != null) {
-                Block ignitingBlock = event.getIgnitingBlock();
-                Plot plotIgnited = FabricUtil.adapt(ignitingBlock.getLocation()).getPlot();
-                if (igniteCause == BlockIgniteEvent.IgniteCause.FLINT_AND_STEEL && (
-                        !plot.getFlag(BlockIgnitionFlag.class) || plotIgnited == null || !plotIgnited
-                                .equals(plot)) || (igniteCause == BlockIgniteEvent.IgniteCause.SPREAD
-                        || igniteCause == BlockIgniteEvent.IgniteCause.LAVA) && (
-                        !plot.getFlag(BlockIgnitionFlag.class) || plotIgnited == null || !plotIgnited
-                                .equals(plot))) {
-                    event.setCancelled(true);
-                }
+            Plot plotIgnited = FabricUtil.adapt(GlobalPos.of(level.dimension(), blockPos)).getPlot();
+            if (!plot.getFlag(BlockIgnitionFlag.class) || plotIgnited == null || !plotIgnited
+                    .equals(plot)) {
+                return InteractionResult.FAIL;
             }
         }
+        return InteractionResult.PASS;
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onLeavesDecay(LeavesDecayEvent event) {
-        Block block = event.getBlock();
-        Location location = FabricUtil.adapt(block.getLocation());
+
+    public InteractionResult onLeavesDecay(ServerLevel serverLevel, BlockPos blockPos, BlockState blockState) {
+        Location location = FabricUtil.adapt(GlobalPos.of(serverLevel.dimension(), blockPos));
 
         PlotArea area = location.getPlotArea();
         if (area == null) {
-            return;
+            return InteractionResult.PASS;
         }
 
         Plot plot = location.getOwnedPlot();
@@ -1122,44 +1214,39 @@ public class BlockEventListener {
             if (plot != null) {
                 plot.debug("Leaf decaying was cancelled because leaf-decay = false");
             }
-            event.setCancelled(true);
+            return InteractionResult.FAIL;
         }
-
+        return InteractionResult.PASS;
     }
 
-    @EventHandler(ignoreCancelled = true)
-    public void onSpongeAbsorb(SpongeAbsorbEvent event) {
-        Block sponge = event.getBlock();
-        Location location = FabricUtil.adapt(sponge.getLocation());
+    public InteractionResult onSpongeAbsorb(BlockPos blockPos, Level level, BlockPos blockPos2) {
+        Location location = FabricUtil.adapt(GlobalPos.of(level.dimension(), blockPos2));
         PlotArea area = location.getPlotArea();
-        List<org.bukkit.block.BlockState> blocks = event.getBlocks();
         if (area == null) {
-            blocks.removeIf(block -> FabricUtil.adapt(block.getLocation()).isPlotArea());
+            return InteractionResult.PASS;
         } else {
-            Plot origin = area.getOwnedPlot(location);
-            blocks.removeIf(block -> {
-                Location blockLocation = FabricUtil.adapt(block.getLocation());
-                if (!area.contains(blockLocation.getX(), blockLocation.getZ())) {
-                    return true;
+            Plot origin = area.getOwnedPlot(FabricUtil.adapt(GlobalPos.of(level.dimension(), blockPos)));
+            if (origin == null) {
+                return InteractionResult.FAIL;
+            } else {
+                if (!area.contains(blockPos2.getX(), blockPos2.getZ())) {
+                    return InteractionResult.FAIL;
                 }
-                Plot plot = area.getOwnedPlot(blockLocation);
+                Plot plot = area.getOwnedPlot(location);
                 if (!Objects.equals(plot, origin)) {
-                    return true;
+                    return InteractionResult.FAIL;
                 }
-                return !area.buildRangeContainsY(location.getY());
-            });
+                if (!area.buildRangeContainsY(location.getY())) {
+                    return InteractionResult.FAIL;
+                }
+            }
         }
-        if (blocks.isEmpty()) {
-            // Cancel event so the sponge block doesn't turn into a wet sponge
-            // if no water is being absorbed
-            event.setCancelled(true);
-        }
+        return InteractionResult.PASS;
     }
 
     /*
      * BlockMultiPlaceEvent is called unrelated to the BlockPlaceEvent itself and therefore doesn't respect the cancellation.
-     */
-    /*@EventHandler(ignoreCancelled = true, priority = EventPriority.HIGHEST)
+     *
     public void onBlockMultiPlace(BlockMultiPlaceEvent event) {
         // Check if the generic block place event would be cancelled
         blockCreate(event);
@@ -1205,6 +1292,6 @@ public class BlockEventListener {
             }
         }
 
-    }
-     */
+    }*/
+
 }

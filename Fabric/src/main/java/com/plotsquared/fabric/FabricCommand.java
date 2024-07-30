@@ -62,7 +62,7 @@ public class FabricCommand {
             return List.of();
         }
         Collection<com.plotsquared.core.command.Command> objects =
-                MainCommand.getInstance().tab(player, args, true);
+                MainCommand.getInstance().tab(player, args, label.endsWith(" "));
         if (objects == null) {
             return List.of();
         }

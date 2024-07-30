@@ -85,8 +85,8 @@ public class ChunkListener {
         ServerChunkEvents.CHUNK_UNLOAD.register(this::onChunkUnload);
         Stimuli.global().listen(EntitySpawnEvent.EVENT, this::onItemSpawn);
         Stimuli.global().listen(EntitySpawnEvent.EVENT, this::onEntitySpawn);
-        /*
-        if (version > 13) {
+        ;
+        /*if (version > 13) {
             return;
         }
         TaskManager.runTaskRepeat(() -> {
@@ -226,12 +226,13 @@ public class ChunkListener {
         }
         return InteractionResult.PASS;
     }
-    /* TODO INVESTIGATE PHYSICS DISABLING */
-   /* public void onBlockPhysics(BlockPhysicsEvent event) {
+
+    public InteractionResult onBlockPhysics() {
         if (Settings.Chunk_Processor.DISABLE_PHYSICS) {
-            event.setCancelled(true);
+            return InteractionResult.FAIL;
         }
-    }*/
+        return InteractionResult.PASS;
+    }
 
     public InteractionResult onEntitySpawn(Entity entity) {
         if (entity instanceof LivingEntity) {

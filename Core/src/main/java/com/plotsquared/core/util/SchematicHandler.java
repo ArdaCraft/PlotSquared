@@ -39,6 +39,8 @@ import com.plotsquared.core.util.task.TaskManager;
 import com.plotsquared.core.util.task.YieldRunnable;
 import com.sk89q.jnbt.ByteArrayTag;
 import com.sk89q.jnbt.CompoundTag;
+import com.sk89q.jnbt.DoubleTag;
+import com.sk89q.jnbt.FloatTag;
 import com.sk89q.jnbt.IntArrayTag;
 import com.sk89q.jnbt.IntTag;
 import com.sk89q.jnbt.ListTag;
@@ -64,6 +66,7 @@ import com.sk89q.worldedit.world.World;
 import com.sk89q.worldedit.world.biome.BiomeType;
 import com.sk89q.worldedit.world.block.BaseBlock;
 import com.sk89q.worldedit.world.block.BlockTypes;
+import com.sk89q.worldedit.world.entity.EntityTypes;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.checkerframework.checker.nullness.qual.NonNull;
@@ -500,7 +503,7 @@ public abstract class SchematicHandler {
         String rawJSON;
         try {
             URLConnection connection = URI.create(
-                    Settings.Web.URL + "list.php?" + uuid.toString())
+                            Settings.Web.URL + "list.php?" + uuid.toString())
                     .toURL()
                     .openConnection();
             connection.setRequestProperty("User-Agent", "Mozilla/5.0");
@@ -594,6 +597,38 @@ public abstract class SchematicHandler {
         schematic.put("BiomeData", new ByteArrayTag(biomeBuffer.toByteArray()));
     }
 
+    private void writeSchematicData(
+            final @NonNull Map<String, Tag> schematic,
+            final @NonNull Map<String, Integer> palette,
+            final @NonNull Map<String, Integer> biomePalette,
+            final @NonNull List<CompoundTag> tileEntities,
+            final @NonNull List<CompoundTag> entities,
+            final @NonNull ByteArrayOutputStream buffer,
+            final @NonNull ByteArrayOutputStream biomeBuffer
+    ) {
+        schematic.put("PaletteMax", new IntTag(palette.size()));
+
+        Map<String, Tag> paletteTag = new HashMap<>();
+        palette.forEach((key, value) -> paletteTag.put(key, new IntTag(value)));
+
+        schematic.put("Palette", new CompoundTag(paletteTag));
+        schematic.put("BlockData", new ByteArrayTag(buffer.toByteArray()));
+        schematic.put("Entities", new ListTag(CompoundTag.class, entities));
+        schematic.put("BlockEntities", new ListTag(CompoundTag.class, tileEntities));
+
+        if (biomeBuffer.size() == 0 || biomePalette.size() == 0) {
+            return;
+        }
+
+        schematic.put("BiomePaletteMax", new IntTag(biomePalette.size()));
+
+        Map<String, Tag> biomePaletteTag = new HashMap<>();
+        biomePalette.forEach((key, value) -> biomePaletteTag.put(key, new IntTag(value)));
+
+        schematic.put("BiomePalette", new CompoundTag(biomePaletteTag));
+        schematic.put("BiomeData", new ByteArrayTag(biomeBuffer.toByteArray()));
+    }
+
     @NonNull
     private Map<String, Tag> initSchematic(short width, short height, short length) {
         Map<String, Tag> schematic = new HashMap<>();
@@ -665,6 +700,7 @@ public abstract class SchematicHandler {
             Map<String, Integer> biomePalette = new HashMap<>();
 
             List<CompoundTag> tileEntities = new ArrayList<>();
+            List<CompoundTag> entities = new ArrayList<>();
             ByteArrayOutputStream buffer = new ByteArrayOutputStream(width * height * length);
             ByteArrayOutputStream biomeBuffer = new ByteArrayOutputStream(width * length);
             // Queue
@@ -791,8 +827,41 @@ public abstract class SchematicHandler {
                             }
                             currentZ = minZ; // reset manually as not using local variable
                         }
+                        world.getEntities(aabb).forEach(entity -> {
+                            if (entity.getState().getType() != EntityTypes.PLAYER) {
+                                Map<String, Tag> values = new HashMap<>();
+                                for (Map.Entry<String, Tag> entry : entity.getState().getNbtData().getValue().entrySet()) {
+                                    values.put(entry.getKey(), entry.getValue());
+                                }
+                                // Positions are kept in NBT, we don't want that.
+                                // values.remove("x");
+                                // values.remove("y");
+                                // values.remove("z");
+                                values.remove("Rotation");
+                                values.put("Id", new StringTag(entity.getState().getType().getId()));
+
+                                List<FloatTag> rotationTag = new ArrayList<>();
+                                //values.put("Rotation", new ListTag(FloatTag.class, Arrays.asList(
+                                rotationTag.add(new FloatTag(entity.getLocation().getYaw()));
+                                rotationTag.add(new FloatTag(entity.getLocation().getPitch()));
+                                // )));
+                                values.put("Rotation", new ListTag(FloatTag.class, rotationTag));
+                                // Remove 'id' if it exists. We want 'Id'.
+                                // Do this after we get "getNbtId" cos otherwise "getNbtId" doesn't work.
+                                // Dum.
+                                // values.remove("id");
+                                List<DoubleTag> positionTags = new ArrayList<>();
+                                positionTags.add(new DoubleTag(entity.getLocation().getX()-minX));
+                                positionTags.add(new DoubleTag(entity.getLocation().getY()-minY));
+                                positionTags.add(new DoubleTag(entity.getLocation().getZ()-minZ));
+                                values.put("Pos", new ListTag(DoubleTag.class, positionTags));
+
+                                entities.add(new CompoundTag(values));
+                            }
+                        });
+
                         TaskManager.runTaskAsync(() -> {
-                            writeSchematicData(schematic, palette, biomePalette, tileEntities, buffer, biomeBuffer);
+                            writeSchematicData(schematic, palette, biomePalette, tileEntities, entities, buffer, biomeBuffer);
                             completableFuture.complete(new CompoundTag(schematic));
                         });
                     }

@@ -11,14 +11,15 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
+import org.jetbrains.annotations.Nullable;
 
 public interface LevelSetBlockAndUpdateCallback {
 
     Event<LevelSetBlockAndUpdateCallback> EVENT = EventFactory.createArrayBacked(
             LevelSetBlockAndUpdateCallback.class,
-            callbacks -> (blockPos, blockState, livingEntity) -> {
+            callbacks -> (blockPos, blockState, livingEntity, level) -> {
                 for (LevelSetBlockAndUpdateCallback callback : callbacks) {
-                    InteractionResult result = callback.onSetBlockAndUpdate(blockPos, blockState, livingEntity);
+                    InteractionResult result = callback.onSetBlockAndUpdate(blockPos, blockState, livingEntity, level);
                     if (result != InteractionResult.PASS) {
                         return result;
                     }
@@ -30,6 +31,6 @@ public interface LevelSetBlockAndUpdateCallback {
     InteractionResult onSetBlockAndUpdate(
             BlockPos blockPos,
             BlockState blockState,
-            LivingEntity entity);
+            @Nullable LivingEntity entity, Level level);
 
 }

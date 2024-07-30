@@ -1,6 +1,7 @@
 package com.plotsquared.fabric.util.fawe;
-/*
+
 import com.google.inject.Inject;
+import com.google.inject.Singleton;
 import com.plotsquared.core.configuration.Settings;
 import com.plotsquared.core.generator.HybridPlotManager;
 import com.plotsquared.core.inject.factory.ProgressSubscriberFactory;
@@ -13,6 +14,7 @@ import com.plotsquared.core.queue.GlobalBlockQueue;
 import com.plotsquared.core.queue.QueueCoordinator;
 import com.plotsquared.core.util.WorldUtil;
 import com.plotsquared.fabric.util.FabricRegionManager;
+import com.sk89q.worldedit.fabric.fawe.plotsquared.FaweDelegateRegionManager;
 import com.sk89q.worldedit.function.pattern.Pattern;
 import com.sk89q.worldedit.regions.CuboidRegion;
 import com.sk89q.worldedit.world.biome.BiomeType;
@@ -23,8 +25,11 @@ import org.jetbrains.annotations.NotNull;
 import java.util.Objects;
 import java.util.Set;
 
+@Singleton
 public class FaweRegionManager extends FabricRegionManager {
 
+
+    private final FaweDelegateRegionManager delegate = new FaweDelegateRegionManager();
     @Inject
     public FaweRegionManager(WorldUtil worldUtil, GlobalBlockQueue blockQueue, ProgressSubscriberFactory subscriberFactory) {
         super(worldUtil, blockQueue, subscriberFactory);
@@ -100,4 +105,4 @@ public class FaweRegionManager extends FabricRegionManager {
     }
 
 }
-*/
+

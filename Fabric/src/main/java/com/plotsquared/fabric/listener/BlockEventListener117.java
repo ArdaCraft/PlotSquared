@@ -26,55 +26,77 @@ import com.plotsquared.core.plot.flag.implementations.CopperOxideFlag;
 import com.plotsquared.core.plot.flag.implementations.MiscInteractFlag;
 import com.plotsquared.core.plot.flag.implementations.SculkSensorInteractFlag;
 import com.plotsquared.core.util.PlotFlagUtil;
+import com.plotsquared.fabric.listener.event.GameEventEvent;
+import com.plotsquared.fabric.listener.event.LevelSetBlockEvent;
+import com.plotsquared.fabric.player.FabricPlayer;
+import com.plotsquared.fabric.util.FabricUtil;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.GlobalPos;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.projectile.Projectile;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.AbstractCandleBlock;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.gameevent.GameEvent;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
 @SuppressWarnings("unused")
-public class BlockEventListener117  {
-/*
-    private static final Set<Material> COPPER_OXIDIZING = Set.of(
-            Material.COPPER_BLOCK,
-            Material.EXPOSED_COPPER,
-            Material.WEATHERED_COPPER,
-            Material.OXIDIZED_COPPER,
-            Material.CUT_COPPER,
-            Material.EXPOSED_CUT_COPPER,
-            Material.WEATHERED_CUT_COPPER,
-            Material.OXIDIZED_CUT_COPPER,
-            Material.CUT_COPPER_STAIRS,
-            Material.EXPOSED_CUT_COPPER_STAIRS,
-            Material.WEATHERED_CUT_COPPER_STAIRS,
-            Material.OXIDIZED_CUT_COPPER_STAIRS,
-            Material.CUT_COPPER_SLAB,
-            Material.EXPOSED_CUT_COPPER_SLAB,
-            Material.WEATHERED_CUT_COPPER_SLAB,
-            Material.OXIDIZED_CUT_COPPER_SLAB
-    );*/
+public class BlockEventListener117 {
+
+    private static final Set<Block> COPPER_OXIDIZING = Set.of(
+            Blocks.COPPER_BLOCK,
+            Blocks.EXPOSED_COPPER,
+            Blocks.WEATHERED_COPPER,
+            Blocks.OXIDIZED_COPPER,
+            Blocks.CUT_COPPER,
+            Blocks.EXPOSED_CUT_COPPER,
+            Blocks.WEATHERED_CUT_COPPER,
+            Blocks.OXIDIZED_CUT_COPPER,
+            Blocks.CUT_COPPER_STAIRS,
+            Blocks.EXPOSED_CUT_COPPER_STAIRS,
+            Blocks.WEATHERED_CUT_COPPER_STAIRS,
+            Blocks.OXIDIZED_CUT_COPPER_STAIRS,
+            Blocks.CUT_COPPER_SLAB,
+            Blocks.EXPOSED_CUT_COPPER_SLAB,
+            Blocks.WEATHERED_CUT_COPPER_SLAB,
+            Blocks.OXIDIZED_CUT_COPPER_SLAB
+    );
 
     @Inject
     public BlockEventListener117() {
+
+        GameEventEvent.EVENT.register(this::onBlockReceiveGame);
+        LevelSetBlockEvent.EVENT.register(this::onBlockForm);
     }
 
-   /* @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onBlockReceiveGame(BlockReceiveGameEvent event) {
-        Block block = event.getBlock();
-        Location location = BukkitUtil.adapt(block.getLocation());
-        Entity entity = event.getEntity();
+
+
+    public InteractionResult onBlockReceiveGame(GameEvent gameEvent, Vec3 vec3, GameEvent.Context context, ServerLevel serverLevel) {
+        Location location = FabricUtil.adapt(GlobalPos.of(serverLevel.dimension(), new BlockPos((int) vec3.x, (int) vec3.y, (int) vec3.z)));
+        Entity entity = context.sourceEntity();
 
         PlotArea area = location.getPlotArea();
         if (area == null) {
-            return;
+            return InteractionResult.PASS;
         }
 
-        BukkitPlayer plotPlayer = null;
+        FabricPlayer plotPlayer = null;
 
-        if (entity instanceof Player player) {
-            plotPlayer = BukkitUtil.adapt(player);
+        if (entity instanceof ServerPlayer player) {
+            plotPlayer = FabricUtil.adapt(player);
             if (area.notifyIfOutsideBuildArea(plotPlayer, location.getY())) {
-                event.setCancelled(true);
-                return;
+               return InteractionResult.FAIL;
             }
         }
 
@@ -89,35 +111,35 @@ public class BlockEventListener117  {
                     if (!plot.isAdded(plotPlayer.getUUID())) {
                         plot.debug(plotPlayer.getName() + " couldn't trigger sculk sensors because both " +
                                 "sculk-sensor-interact and misc-interact = false");
-                        event.setCancelled(true);
+                        return InteractionResult.FAIL;
                     }
                 }
-                return;
+                return InteractionResult.PASS;
             }
-            if (entity instanceof Item item) {
-                UUID itemThrower = item.getThrower();
+            if (entity instanceof Projectile item) {
+                UUID itemThrower = item.getOwner().getUUID();
                 if (plot != null) {
+                    /*
                     if (itemThrower == null && (itemThrower = item.getOwner()) == null) {
                         plot.debug(
                                 "A thrown item couldn't trigger sculk sensors because both sculk-sensor-interact and " +
                                         "misc-interact = false and the item's owner could not be resolved.");
-                        event.setCancelled(true);
-                        return;
-                    }
+                        return InteractionResult.FAIL;
+                    }*/
                     if (!plot.isAdded(itemThrower)) {
                         if (!plot.isAdded(itemThrower)) {
                             plot.debug("A thrown item couldn't trigger sculk sensors because both sculk-sensor-interact and " +
                                     "misc-interact = false");
-                            event.setCancelled(true);
+                            return InteractionResult.FAIL;
                         }
                     }
                 }
             }
         }
+        return InteractionResult.PASS;
     }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onBlockFertilize(BlockFertilizeEvent event) {
+/*
+    public void onBlockFertilize() {
         Block block = event.getBlock();
         List<org.bukkit.block.BlockState> blocks = event.getBlocks();
         Location location = BukkitUtil.adapt(blocks.get(0).getLocation());
@@ -153,29 +175,33 @@ public class BlockEventListener117  {
             }
         }
     }
+*/
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onBlockForm(BlockFormEvent event) {
-        Block block = event.getBlock();
-        Location location = BukkitUtil.adapt(block.getLocation());
+    public InteractionResult onBlockForm(
+            BlockPos blockPos,
+            BlockState blockState,
+            int i,
+            Level level
+    ) {
+        Location location = FabricUtil.adapt(GlobalPos.of(level.dimension(), blockPos));
         if (location.isPlotRoad()) {
-            event.setCancelled(true);
-            return;
+            return InteractionResult.FAIL;
         }
         PlotArea area = location.getPlotArea();
         if (area == null) {
-            return;
+            return InteractionResult.PASS;
         }
         Plot plot = area.getOwnedPlot(location);
         if (plot == null) {
-            return;
+            return InteractionResult.PASS;
         }
-        if (COPPER_OXIDIZING.contains(event.getNewState().getType())) {
+        if (COPPER_OXIDIZING.contains(blockState.getBlock())) {
             if (!plot.getFlag(CopperOxideFlag.class)) {
                 plot.debug("Copper could not oxide because copper-oxide = false");
-                event.setCancelled(true);
+               return InteractionResult.FAIL;
             }
         }
+        return InteractionResult.PASS;
     }
-*/
+
 }

@@ -18,6 +18,7 @@
  */
 package com.plotsquared.fabric;
 
+import com.google.common.collect.Lists;
 import com.google.inject.Guice;
 import com.google.inject.Inject;
 import com.google.inject.Injector;
@@ -37,6 +38,8 @@ import com.plotsquared.core.configuration.ConfigurationUtil;
 import com.plotsquared.core.configuration.Settings;
 import com.plotsquared.core.configuration.file.YamlConfiguration;
 import com.plotsquared.core.database.DBFunc;
+import com.plotsquared.core.events.RemoveRoadEntityEvent;
+import com.plotsquared.core.events.Result;
 import com.plotsquared.core.generator.GeneratorWrapper;
 import com.plotsquared.core.generator.IndependentPlotGenerator;
 import com.plotsquared.core.generator.SingleWorldGenerator;
@@ -82,6 +85,7 @@ import com.plotsquared.fabric.listener.ChunkListener;
 import com.plotsquared.fabric.listener.EntityEventListener;
 import com.plotsquared.fabric.listener.EntitySpawnListener;
 import com.plotsquared.fabric.listener.HighFreqBlockEventListener;
+import com.plotsquared.fabric.listener.PaperListener;
 import com.plotsquared.fabric.listener.PlayerEventListener;
 import com.plotsquared.fabric.listener.PlayerEventListener1201;
 import com.plotsquared.fabric.listener.ProjectileEventListener;
@@ -101,6 +105,7 @@ import com.plotsquared.fabric.uuid.LuckPermsUUIDService;
 import com.plotsquared.fabric.uuid.SQLiteUUIDService;
 import com.plotsquared.fabric.uuid.SquirrelIdUUIDService;
 import com.sk89q.worldedit.WorldEdit;
+import com.sk89q.worldedit.fabric.FabricEntity;
 import me.isaiah.multiworld.MultiworldMod;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
@@ -113,7 +118,6 @@ import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import net.minecraft.commands.CommandBuildContext;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
-import net.minecraft.commands.synchronization.SuggestionProviders;
 import net.minecraft.core.GlobalPos;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -124,12 +128,10 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.chunk.ChunkGenerator;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.storage.LevelResource;
-import org.apache.commons.compress.utils.Lists;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import org.checkerframework.checker.nullness.qual.Nullable;
-import org.incendo.serverlib.ServerLib;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.File;
@@ -198,6 +200,9 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
     private UUIDPipeline backgroundPipeline;
     @Inject
     private PlatformWorldManager<ServerLevel> worldManager;
+
+    public BlockEventListener blockEventListener;
+    public PlayerEventListener playerEventListener;
     private Locale serverLocale;
 
     public static MinecraftServer SERVER;
@@ -272,7 +277,13 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
 
             // FastAsyncWorldEdit
             if (Settings.FAWE_Components.FAWE_HOOK) {
-                faweHook = true;
+                try {
+                    Class.forName("com.sk89q.worldedit.fabric.fawe.plotsquared.FaweQueueCoordinator");
+                    faweHook = true;
+                } catch (ClassNotFoundException e) {
+                    throw new RuntimeException(e);
+                }
+
             /*
             if(FabricLoader.getInstance().isModLoaded("worldedit")) {
                 faweHook = true;
@@ -349,9 +360,9 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
             }
 
             if (Settings.Enabled_Components.EVENTS) {
-                injector.getInstance(PlayerEventListener.class);
+                this.playerEventListener = injector.getInstance(PlayerEventListener.class);
                 injector.getInstance(PlayerEventListener1201.class);
-                injector.getInstance(BlockEventListener.class);
+                this.blockEventListener = injector.getInstance(BlockEventListener.class);
                 if (Settings.HIGH_FREQUENCY_LISTENER) {
                     injector.getInstance(HighFreqBlockEventListener.class);
                 }
@@ -360,14 +371,7 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
                 injector.getInstance(ProjectileEventListener.class);
                 injector.getInstance(ServerListener.class);
                 injector.getInstance(EntitySpawnListener.class);
-                injector.getInstance(PlayerEventListener1201.class);
-
-            /*
-            if (PaperLib.isPaper() && Settings.Paper_Components.PAPER_LISTENERS) {
-                getServer().getPluginManager().registerEvents(injector().getInstance(PaperListener.class), this);
-            } else {
-                getServer().getPluginManager().registerEvents(injector().getInstance(SpigotListener.class), this);
-            }*/
+                injector.getInstance(PaperListener.class);
                 this.plotListener.startRunnable();
             }
 
@@ -705,14 +709,20 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
                         ))
                         .executes(context -> {
                             if (context.getInput().split(" ").length > 1) {
-                                String[] args = Arrays.copyOfRange(context.getInput().split(" "), 1, context.getInput().split(" ").length);
-                                FabricCommand.onCommand(context.getSource(),
+                                String[] args = Arrays.copyOfRange(
+                                        context.getInput().split(" "),
+                                        1,
+                                        context.getInput().split(" ").length
+                                );
+                                FabricCommand.onCommand(
+                                        context.getSource(),
                                         context.getCommand(),
                                         context.getInput().substring(1, context.getInput().indexOf(" ")),
                                         args
                                 );
                             } else {
-                                FabricCommand.onCommand(context.getSource(),
+                                FabricCommand.onCommand(
+                                        context.getSource(),
                                         context.getCommand(),
                                         context.getInput().substring(1, context.getInput().indexOf(" ")),
                                         context.getInput().split(" ")
@@ -723,9 +733,6 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
 
         dispatcher.register(Commands
                 .literal("plot").redirect(plotsNode));
-
-        /*FabricPlatform.SERVER.getCommands().getDispatcher().register(Commands
-                .literal("p").redirect(plotsNode));*/
 
         dispatcher.register(Commands
                 .literal("plotsquared").redirect(plotsNode));
@@ -771,10 +778,11 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
                         continue;
                     }*/
                     // Fallback for Spigot not having Entity#getEntitySpawnReason
-                    if (entity.getAttached(PlotSquaredDataAttachments.PS_CUSTOM_SPAWNED).booleanValue()) {
+                    if (entity.getAttachedOrElse(PlotSquaredDataAttachments.PS_CUSTOM_SPAWNED, false).booleanValue()) {
                         continue;
                     }
-                    switch (entity.getType().toString()) {
+
+                    switch (entity.getName().getString().toUpperCase()) {
                         case "EGG":
                         case "FISHING_HOOK":
                         case "ENDER_SIGNAL":
@@ -824,11 +832,15 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
                                         if (entity.hasAttached(PlotSquaredDataAttachments.PS_TMP_TELEPORT)) {
                                             continue;
                                         }
-                                        //this.removeRoadEntity(entity, iterator);
+                                        this.removeRoadEntity(entity, iterator);
                                     }
                                     continue;
                                 }
-                                List<Plot> meta = entity.getAttached(PlotSquaredDataAttachments.PLOT);
+                                List<Plot> meta =
+                                        entity.getAttached(PlotSquaredDataAttachments.PLOT)
+                                                .stream()
+                                                .map(s -> Plot.fromString(null, s))
+                                                .toList();
                                 if (meta.isEmpty()) {
                                     continue;
                                 }
@@ -837,7 +849,7 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
                                     if (entity.hasAttached(PlotSquaredDataAttachments.PS_TMP_TELEPORT)) {
                                         continue;
                                     }
-                                    //this.removeRoadEntity(entity, iterator);
+                                    this.removeRoadEntity(entity, iterator);
                                 }
                             }
                             continue;
@@ -850,7 +862,7 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
                                     entity.level().dimension(),
                                     entity.blockPosition()
                             ))) == null) {
-                                // this.removeRoadEntity(entity, iterator);
+                                this.removeRoadEntity(entity, iterator);
                             }
                             // dropped item
                             continue;
@@ -869,7 +881,10 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
                                         continue;
                                     }
 
-                                    PlotId originalPlotId = entity.getAttached(PlotSquaredDataAttachments.SHULKER_PLOT);
+                                    PlotId originalPlotId =
+                                            Plot
+                                                    .fromString(null, entity.getAttached(PlotSquaredDataAttachments.SHULKER_PLOT))
+                                                    .getId();
                                     if (originalPlotId != null) {
                                         com.plotsquared.core.location.Location pLoc =
                                                 FabricUtil.adapt(GlobalPos.of(
@@ -883,7 +898,7 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
                                                 if (entity.hasAttached(PlotSquaredDataAttachments.PS_TMP_TELEPORT)) {
                                                     continue;
                                                 }
-                                                //  this.removeRoadEntity(entity, iterator);
+                                                this.removeRoadEntity(entity, iterator);
                                             }
                                         }
                                     }
@@ -895,7 +910,7 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
                                     if (area != null) {
                                         Plot currentPlot = area.getPlotAbs(pLoc);
                                         if (currentPlot != null) {
-                                            entity.setAttached(PlotSquaredDataAttachments.SHULKER_PLOT, currentPlot.getId());
+                                            entity.setAttached(PlotSquaredDataAttachments.SHULKER_PLOT, currentPlot.toString());
                                         }
                                     }
                                 }
@@ -986,7 +1001,7 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
                                                 if (entity.hasAttached(PlotSquaredDataAttachments.PS_TMP_TELEPORT)) {
                                                     continue;
                                                 }
-                                                //this.removeRoadEntity(entity, iterator);
+                                                this.removeRoadEntity(entity, iterator);
                                             }
                                         }
                                     } else {
@@ -997,7 +1012,7 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
                                             if (entity.hasAttached(PlotSquaredDataAttachments.PS_TMP_TELEPORT)) {
                                                 continue;
                                             }
-                                            //this.removeRoadEntity(entity, iterator);
+                                            this.removeRoadEntity(entity, iterator);
                                         }
                                     }
                                 }
@@ -1011,17 +1026,17 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
         }), TaskTime.seconds(1L));
     }
 
-    /*
-        private void removeRoadEntity(Entity entity, Iterator<Entity> entityIterator) {
-            RemoveRoadEntityEvent event =
-                    eventDispatcher.callRemoveRoadEntity(FabricAdapter.adapt(entity));
-            if (event.getEventResult() == Result.DENY) {
-                return;
-            }
 
-            entityIterator.remove();
-            entity.remove(Entity.RemovalReason.DISCARDED);
-        }*/
+    private void removeRoadEntity(Entity entity, Iterator<Entity> entityIterator) {
+        RemoveRoadEntityEvent event =
+                eventDispatcher.callRemoveRoadEntity(new FabricEntity(entity));
+        if (event.getEventResult() == Result.DENY) {
+            return;
+        }
+
+        entityIterator.remove();
+        entity.remove(Entity.RemovalReason.DISCARDED);
+    }
 
     public @Nullable
     final ChunkGenerator getDefaultWorldGenerator(

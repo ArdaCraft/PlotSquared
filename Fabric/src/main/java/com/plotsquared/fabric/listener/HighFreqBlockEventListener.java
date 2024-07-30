@@ -33,6 +33,7 @@ import com.plotsquared.core.util.PlotFlagUtil;
 import com.plotsquared.core.util.task.TaskManager;
 import com.plotsquared.core.util.task.TaskTime;
 import com.plotsquared.fabric.listener.event.OnExecuteUpdateCallback;
+import com.plotsquared.fabric.listener.event.RedstonePowerUpdateEvent;
 import com.plotsquared.fabric.player.FabricPlayer;
 import com.plotsquared.fabric.util.FabricUtil;
 import com.sk89q.worldedit.WorldEdit;
@@ -44,13 +45,11 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.ComparatorBlock;
 import net.minecraft.world.level.block.DirectionalBlock;
 import net.minecraft.world.level.block.FallingBlock;
 import net.minecraft.world.level.block.RedStoneWireBlock;
 import net.minecraft.world.level.block.piston.PistonBaseBlock;
-import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
 import org.checkerframework.checker.nullness.qual.NonNull;
 
@@ -76,7 +75,9 @@ public class HighFreqBlockEventListener {
     public HighFreqBlockEventListener(final @NonNull PlotAreaManager plotAreaManager, final @NonNull WorldEdit worldEdit) {
         this.plotAreaManager = plotAreaManager;
         this.worldEdit = worldEdit;
-        OnExecuteUpdateCallback.EVENT.register(this::onRedstoneEvent);
+        RedstonePowerUpdateEvent.EVENT.register(this::onRedstoneEvent);
+        OnExecuteUpdateCallback.EVENT.register(this::onPhysicsEvent);
+
     }
 
     public static void sendBlockChange(GlobalPos bloc, final BlockState data) {
@@ -102,12 +103,9 @@ public class HighFreqBlockEventListener {
     public InteractionResult onRedstoneEvent(
             Level level,
             BlockState blockState,
-            BlockPos blockPos,
-            Block block,
-            BlockPos blockPos2,
-            boolean bl
+            BlockPos blockPos
     ) {
-        if (block instanceof RedStoneWireBlock) {
+        if (blockState.getBlock() instanceof RedStoneWireBlock) {
             Location location = FabricUtil.adapt(GlobalPos.of(level.dimension(), blockPos));
             PlotArea area = location.getPlotArea();
             if (area == null) {

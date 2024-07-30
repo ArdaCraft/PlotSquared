@@ -20,35 +20,33 @@ package com.plotsquared.fabric.util;
 
 import com.plotsquared.core.location.Location;
 import com.plotsquared.core.location.PlotLoc;
-
 import com.sk89q.worldedit.fabric.FabricWorld;
 import com.sk89q.worldedit.math.BlockVector3;
 import com.sk89q.worldedit.regions.CuboidRegion;
 import com.sk89q.worldedit.world.block.BaseBlock;
 import net.minecraft.core.GlobalPos;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.chunk.LevelChunk;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
-import java.util.Set;
 
 
 public class ContentMap {
 
     private static final Logger LOGGER = LogManager.getLogger("PlotSquared/" + ContentMap.class.getSimpleName());
 
-    final Set<Entity> entities;
+    final HashMap<EntityType<?> ,CompoundTag> entities;
     final Map<PlotLoc, BaseBlock[]> allBlocks;
 
     ContentMap() {
-        this.entities = new HashSet<>();
+        this.entities = new HashMap<>();
         this.allBlocks = new HashMap<>();
     }
 
@@ -81,16 +79,15 @@ public class ContentMap {
             if (entity.getVehicle() != null) {
                 continue;
             }
-            /*
-            EntityWrapper wrap = new ReplicatingEntityWrapper(entity, (short) 2);
+
+            /*EntityWrapper wrap = new ReplicatingEntityWrapper(entity, (short) 2);
             wrap.saveEntity();*/
-            this.entities.add(entity);
+            this.entities.put(entity.getType(), entity.saveWithoutId(new CompoundTag()));
         }
     }
 
     void saveEntitiesIn(ServerLevel serverLevel, LevelChunk chunk, CuboidRegion region, boolean delete) {
-        /*
-        for (Entity entity : FabricRegionManager.getEntitiesInChunk(serverLevel, chunk)) {
+        for (Entity entity : FabricUtil.getEntitiesInChunk(serverLevel, chunk)) {
             Location location = FabricUtil.adapt(GlobalPos.of(entity.level().dimension(), entity.blockPosition()));
             int x = location.getX();
             int z = location.getZ();
@@ -100,21 +97,21 @@ public class ContentMap {
             if (entity.getVehicle() != null) {
                 continue;
             }
-            EntityWrapper wrap = new ReplicatingEntityWrapper(entity, (short) 2);
-            wrap.saveEntity();
-            this.entities.add(wrap);
+            /*EntityWrapper wrap = new ReplicatingEntityWrapper(entity, (short) 2);
+            wrap.saveEntity();*/
+            this.entities.put(entity.getType(), entity.saveWithoutId(new CompoundTag()));
             if (delete) {
                 if (!(entity instanceof ServerPlayer)) {
                     entity.remove(Entity.RemovalReason.DISCARDED);
                 }
             }
-        }*/
+        }
     }
 
     void restoreEntities(ServerLevel world) {
-        for (Entity entity : this.entities) {
+        for (Map.Entry<EntityType<?>, CompoundTag> entry : this.entities.entrySet()) {
             try {
-                world.addFreshEntity(entity);
+                world.addFreshEntity(EntityType.create(entry.getValue(), world).get());
             } catch (Exception e) {
                 LOGGER.error("Failed to restore entity", e);
             }

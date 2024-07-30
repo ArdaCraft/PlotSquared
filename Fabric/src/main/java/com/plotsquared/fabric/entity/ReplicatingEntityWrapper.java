@@ -19,23 +19,29 @@
 package com.plotsquared.fabric.entity;
 /*
 import com.plotsquared.core.configuration.Settings;
-import com.plotsquared.core.location.Direction;
-import com.plotsquared.core.location.Location;
+import net.minecraft.core.Direction;
+import net.minecraft.core.NonNullList;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.AgeableMob;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.OwnableEntity;
+import net.minecraft.world.entity.TamableAnimal;
+import net.minecraft.world.entity.ambient.Bat;
+import net.minecraft.world.entity.animal.IronGolem;
+import net.minecraft.world.entity.animal.Rabbit;
+import net.minecraft.world.entity.animal.Sheep;
 import net.minecraft.world.entity.animal.horse.AbstractChestedHorse;
 import net.minecraft.world.entity.animal.horse.AbstractHorse;
+import net.minecraft.world.entity.animal.horse.Horse;
+import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
+import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.decoration.ItemFrame;
 import net.minecraft.world.entity.decoration.Painting;
 import net.minecraft.world.entity.decoration.PaintingVariant;
 import net.minecraft.world.entity.item.ItemEntity;
-import net.minecraft.world.entity.monster.Slime;
+import net.minecraft.world.entity.vehicle.AbstractMinecartContainer;
 import net.minecraft.world.entity.vehicle.Boat;
-import net.minecraft.world.entity.vehicle.ContainerEntity;
-import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.state.properties.WoodType;
@@ -43,8 +49,8 @@ import net.minecraft.world.phys.Vec3;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.util.Arrays;
 import java.util.List;
-
 
 public final class ReplicatingEntityWrapper extends EntityWrapper {
 
@@ -97,7 +103,7 @@ public final class ReplicatingEntityWrapper extends EntityWrapper {
         switch (entity.getType().toString()) {
             case "BOAT" -> {
                 Boat boat = (Boat) entity;
-                this.dataByte = getOrdinal(Boat.Type.values(), boat.getVariant());
+                this.dataByte = getOrdinal(WoodType.values().toArray(), boat.getVariant());
                 return;
             }
             case "ARROW", "EGG", "ENDER_CRYSTAL", "ENDER_PEARL", "ENDER_SIGNAL", "EXPERIENCE_ORB", "FALLING_BLOCK", "FIREBALL",
@@ -120,7 +126,7 @@ public final class ReplicatingEntityWrapper extends EntityWrapper {
                 this.z = Math.floor(this.getZ());
                 ItemFrame itemFrame = (ItemFrame) entity;
                 this.dataByte = getOrdinal(Rotation.values(), itemFrame.getRotation());
-                this.stack = itemFrame.getItem();
+                this.stack = itemFrame.getItem().copy();
                 return;
             }
             case "PAINTING" -> {
@@ -140,33 +146,38 @@ public final class ReplicatingEntityWrapper extends EntityWrapper {
             // END MISC //
             // INVENTORY HOLDER //
             case "MINECART_CHEST", "MINECART_HOPPER" -> {
-                storeInventory((ContainerEntity) entity);
+                storeInventory(((AbstractMinecartContainer) entity).getItemStacks());
                 return;
             }
             // START LIVING ENTITY //
             // START AGEABLE //
             // START TAMEABLE //
-            case "HORSE", "DONKEY", "LLAMA", "MULE", "SKELETON_HORSE" -> {
+            case "HORSE" -> {
                 AbstractHorse horse = (AbstractHorse) entity;
                 this.horse = new HorseStats();
-                this.horse.jump = horse.getCustomJump();
+                this.horse.jump = horse.getJumpBoostPower();
                 if (horse instanceof AbstractChestedHorse horse1) {
                     this.horse.chest = horse1.hasChest();
                 }
                 //todo these horse features need fixing
-                //this.horse.variant = horse.getVariant();
-                //this.horse.style = horse.getStyle();
-                //this.horse.color = horse.getColor();
+                this.horse.variant = ((Horse) horse).getVariant();
+                this.horse.markings = ((Horse) horse).getMarkings();
                 storeTameable(horse);
                 storeBreedable(horse);
                 storeLiving(horse);
-                storeInventory(horse);
+                storeInventory(horse.inventory.items);
                 return;
+            }
+            case "LLAMA" -> {
+
+            }
+            case  "DONKEY", "MULE", "SKELETON_HORSE" -> {
+
             }
             // END INVENTORY HOLDER //
             case "WOLF", "OCELOT" -> {
-                storeTameable((Tameable) entity);
-                storeBreedable((Breedable) entity);
+                storeTameable((OwnableEntity) entity);
+                storeBreedable((AgeableMob) entity);
                 storeLiving((LivingEntity) entity);
                 return;
             }
@@ -179,19 +190,19 @@ public final class ReplicatingEntityWrapper extends EntityWrapper {
                 } else {
                     this.dataByte = (byte) 0;
                 }
-                this.dataByte2 = sheep.getColor().getDyeData();
+                this.dataByte2 = sheep.getEntityData().get(Sheep.DATA_WOOL_ID);
                 storeBreedable(sheep);
                 storeLiving(sheep);
                 return;
             }
             case "VILLAGER", "CHICKEN", "COW", "MUSHROOM_COW", "PIG", "TURTLE", "POLAR_BEAR" -> {
-                storeBreedable((Breedable) entity);
+                storeBreedable((AgeableMob) entity);
                 storeLiving((LivingEntity) entity);
                 return;
             }
             case "RABBIT" -> {
-                this.dataByte = getOrdinal(Rabbit.Type.values(), ((Rabbit) entity).getRabbitType());
-                storeBreedable((Breedable) entity);
+                this.dataByte = getOrdinal(Rabbit.Variant.values(), ((Rabbit) entity).getVariant());
+                storeBreedable((AgeableMob) entity);
                 storeLiving((LivingEntity) entity);
                 return;
             }
@@ -246,7 +257,7 @@ public final class ReplicatingEntityWrapper extends EntityWrapper {
                 return;
             }
             case "BAT" -> {
-                if (((Bat) entity).isAwake()) {
+                if (!((Bat) entity).isSleeping()) {
                     this.dataByte = (byte) 1;
                 } else {
                     this.dataByte = (byte) 0;
@@ -255,7 +266,8 @@ public final class ReplicatingEntityWrapper extends EntityWrapper {
             }
             case "ENDER_DRAGON" -> {
                 EnderDragon entity1 = (EnderDragon) entity;
-                this.dataByte = (byte) entity1.getPhase().ordinal();
+                this.dataByte = getOrdinal( entity1.getPhaseManager().phases,
+                        entity1.getPhaseManager().getCurrentPhase().getPhase());
                 return;
             }
             case "SKELETON", "WITHER_SKELETON", "GUARDIAN", "ELDER_GUARDIAN", "GHAST", "MAGMA_CUBE", "SQUID", "PIG_ZOMBIE", "HOGLIN",
@@ -286,8 +298,8 @@ public final class ReplicatingEntityWrapper extends EntityWrapper {
         return this.hash;
     }
 
-    public void storeInventory(ContainerEntity held) {
-        this.inventory = (ItemStack[]) held.getItemStacks().toArray().clone();
+    public void storeInventory(NonNullList<ItemStack> items) {
+        this.inventory = Arrays.copyOf(items.toArray(new ItemStack[0]), items.size());
     }
 
     void restoreLiving(LivingEntity entity) {
@@ -366,11 +378,14 @@ public final class ReplicatingEntityWrapper extends EntityWrapper {
         this.lived.helmet = equipment.getHelmet().clone();
     }
 
-    private void restoreTameable(Tameable entity) {
+    private void restoreTameable(OwnableEntity entity) {
         if (this.tamed.tamed) {
             if (this.tamed.owner != null) {
-                entity.setTamed(true);
-                entity.setOwner(this.tamed.owner);
+                if(entity instanceof TamableAnimal tamableAnimal) {
+                    tamableAnimal.setOwnerUUID(this.tamed.owner.getUUID());
+                } else if(entity instanceof AbstractHorse horse) {
+                    horse.setOwnerUUID(this.tamed.owner.getUUID());
+                }
             }
         }
     }
@@ -378,11 +393,11 @@ public final class ReplicatingEntityWrapper extends EntityWrapper {
     /**
      * @deprecated Use {@link #restoreBreedable(Breedable)} instead
      * @since 7.1.0
-     */
-   /* @Deprecated(forRemoval = true, since = "7.1.0")
-    private void restoreAgeable(Ageable entity) {
+     *
+    @Deprecated(forRemoval = true, since = "7.1.0")
+    private void restoreAgeable(AgeableMob entity) {
         if (!this.aged.adult) {
-            entity.setBaby();
+            entity.setBaby(true);
         }
         entity.setAgeLock(this.aged.locked);
         if (this.aged.age > 0) {
@@ -393,23 +408,23 @@ public final class ReplicatingEntityWrapper extends EntityWrapper {
     /**
      * @deprecated Use {@link #storeBreedable(Breedable)} instead
      * @since 7.1.0
-     */
-    /*@Deprecated(forRemoval = true, since = "7.1.0")
-    public void storeAgeable(AgeableMob aged) {
+     *
+    @Deprecated(forRemoval = true, since = "7.1.0")
+    public void storeAgeable(Ageable aged) {
         this.aged = new AgeableStats();
         this.aged.age = aged.getAge();
-        this.aged.locked = aged.isAlwaysTicking();
-        this.aged.adult = !aged.isBaby();
+        this.aged.locked = aged.getAgeLock();
+        this.aged.adult = aged.isAdult();
     }
 
     /**
      * @since 7.1.0
-     */
-    /*private void restoreBreedable(AgeableMob entity) {
+     *
+    private void restoreBreedable(Breedable entity) {
         if (!this.aged.adult) {
-            entity.setBaby(false);
+            entity.setBaby();
         }
-        entity.set(this.aged.locked);
+        entity.setAgeLock(this.aged.locked);
         if (this.aged.age > 0) {
             entity.setAge(this.aged.age);
         }
@@ -417,12 +432,12 @@ public final class ReplicatingEntityWrapper extends EntityWrapper {
 
     /**
      * @since 7.1.0
-     */
-    /*private void storeBreedable(AgeableMob breedable) {
+     *
+    private void storeBreedable(AgeableMob breedable) {
         this.aged = new AgeableStats();
         this.aged.age = breedable.getAge();
-        this.aged.locked = breedable.isAlive();
-        this.aged.adult = breedable.isAdult();
+        this.aged.locked = breedable.forcedAge;
+        this.aged.adult = !breedable.isBaby();
     }
 
     public void storeTameable(OwnableEntity tamed) {
@@ -462,29 +477,29 @@ public final class ReplicatingEntityWrapper extends EntityWrapper {
             }
         }
         if (this.base.fall != 0) {
-            entity.fallDistance = this.base.fall;
+            entity.setFallDistance(this.base.fall);
         }
         if (this.base.fire != 0) {
-            entity.setRemainingFireTicks(this.base.fire);
+            entity.setFireTicks(this.base.fire);
         }
         if (this.base.age != 0) {
-            entity.tickCount = this.base.age;
+            entity.setTicksLived(this.base.age);
         }
-        entity.setDeltaMovement(new Vec3(this.base.vX, this.base.vY, this.base.vZ));
+        entity.setVelocity(new Vector(this.base.vX, this.base.vY, this.base.vZ));
         if (this.depth == 1) {
             return entity;
         }
         if (this.noGravity) {
-            entity.setNoGravity(true);
+            entity.setGravity(false);
         }
         switch (entity.getType().toString()) {
             case "BOAT" -> {
                 Boat boat = (Boat) entity;
-                boat.setVariant(Boat.Type.values()[dataByte]);
+                boat.setWoodType(TreeSpecies.values()[dataByte]);
                 return entity;
             }
             case "SLIME" -> {
-                ((Slime) entity).setSize(this.dataByte, true);
+                ((Slime) entity).setSize(this.dataByte);
                 return entity;
             }
             case "ARROW", "EGG", "ENDER_CRYSTAL", "ENDER_PEARL", "ENDER_SIGNAL", "DROPPED_ITEM", "EXPERIENCE_ORB", "FALLING_BLOCK",
@@ -686,4 +701,5 @@ public final class ReplicatingEntityWrapper extends EntityWrapper {
     }
 
 
-}*/
+}
+*/

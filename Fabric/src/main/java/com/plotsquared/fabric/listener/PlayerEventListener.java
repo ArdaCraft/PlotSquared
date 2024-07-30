@@ -93,6 +93,7 @@ import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
+import net.fabricmc.fabric.api.networking.v1.ServerLoginConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.tag.convention.v1.TagUtil;
 import net.kyori.adventure.text.Component;
@@ -115,6 +116,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
+import net.minecraft.server.network.ServerPlayerConnection;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
@@ -286,6 +288,7 @@ public class PlayerEventListener {
             EntitySpawnListener.testNether(entity);
             Plot plot = location.getPlotAbs();
             if (FabricEntityUtil.checkEntity(entity, plot)) {
+                entity.remove(Entity.RemovalReason.DISCARDED);
                 return InteractionResult.FAIL;
             }
             return InteractionResult.PASS;
@@ -297,13 +300,11 @@ public class PlayerEventListener {
         BaseFireBlockOnPlaceCallback.EVENT.register(this::onNetherPortalCreation);
         EntityHandleInsidePortalCallback.EVENT.register(this::onPortalEnter);
         LecternTakeButtonCallback.EVENT.register(this::onPlayerTakeLecternBook);
-
         ServerEntityEvents.ENTITY_LOAD.register((entity, world) -> {
             if(entity instanceof ServerPlayer serverPlayer) {
                 final ServerPlayer player = serverPlayer;
                 PlotSquared.platform().playerManager().removePlayer(player.getUUID());
-                final PlotPlayer<ServerPlayer> pp = ((FabricPlayerManager) PlotSquared.platform().playerManager()).getPlayer(
-                        player);
+                final PlotPlayer<ServerPlayer> pp = FabricUtil.adapt(player);
 
                 // we're stripping the country code as we don't want to differ between countries
                 //pp.setLocale(Locale.forLanguageTag(player.getLocale().substring(0, 2)));
@@ -326,17 +327,12 @@ public class PlayerEventListener {
                 }, TaskTime.seconds(1L));
             }
         });
-
-
-
         ServerPlayConnectionEvents.DISCONNECT.register(this::onLeave);
-
         ServerPlayerEvents.AFTER_RESPAWN.register((oldPlayer, newPlayer, alive) -> {
             ServerPlayer player = newPlayer;
             PlotPlayer<ServerPlayer> pp = FabricUtil.adapt(player);
             this.eventDispatcher.doRespawnTask(pp);
         });
-
 
         HandlePlayerMoveCallback.EVENT.register((serverboundMovePlayerPacket, serverPlayer) -> {
             if(!serverboundMovePlayerPacket.hasPosition()) {
@@ -555,7 +551,6 @@ public class PlayerEventListener {
             }
             return InteractionResult.PASS;
         });
-
         ServerPlayerTeleportToCallback.EVENT.register((serverLevel, x, y, z, set, g, h, serverPlayer) -> {
             ServerPlayer player = serverPlayer;
             //We need to account for bad plugins like NoCheatPlus that teleports player on/before login -_-
@@ -603,7 +598,6 @@ public class PlayerEventListener {
             }
             return InteractionResult.PASS;
         });
-
         HandleMoveVehicleCallback.EVENT.register((serverboundMoveVehiclePacket, serverPlayer) -> {
             final Vec3 from = serverPlayer.getRootVehicle().position();
             final Vec3 to = new Vec3(serverboundMoveVehiclePacket.getX(), serverboundMoveVehiclePacket.getY(),
@@ -658,12 +652,12 @@ public class PlayerEventListener {
                                             (int) to.z
                                     ))).getPlot();
                             if (vehicle.hasAttached(PLOT_DATA)) {
-                                Plot origin = vehicle.getAttached(PLOT_DATA);
+                                Plot origin = Plot.fromString(null, vehicle.getAttached(PLOT_DATA));
                                 if (origin != null && !origin.getBasePlot(false).equals(toPlot)) {
                                     vehicle.remove(Entity.RemovalReason.DISCARDED);
                                 }
                             } else if (toPlot != null) {
-                                vehicle.setAttached(PLOT_DATA, toPlot);
+                                vehicle.setAttached(PLOT_DATA, toPlot.toString());
                             }
                         }
                     }
@@ -672,7 +666,6 @@ public class PlayerEventListener {
             }
             return InteractionResult.PASS;
         });
-
         Stimuli.global().listen(PlayerChatEvent.EVENT, (serverPlayer, playerChatMessage, bound) -> {
             FabricPlayer plotPlayer = FabricUtil.adapt(serverPlayer);
             Location location = plotPlayer.getLocation();
@@ -745,7 +738,6 @@ public class PlayerEventListener {
             //cancel the original message
             return InteractionResult.FAIL;
         });
-
         ServerEntityWorldChangeEvents.AFTER_PLAYER_CHANGE_WORLD.register((player, origin, destination) -> {
             FabricPlayer pp = FabricUtil.adapt(player);
             // Delete last location
@@ -777,7 +769,6 @@ public class PlayerEventListener {
                 }
             }
         });
-
         Stimuli.global().listen(PlayerInventoryActionEvent.EVENT, (serverPlayer, i, clickType, i1) -> {
         /*if (!event.isLeftClick() || (event.getAction() != InventoryAction.PLACE_ALL) || event
             .isShiftClick()) {
@@ -920,7 +911,6 @@ public class PlayerEventListener {
             }
             return InteractionResult.PASS;
         });
-
         Stimuli.global().listen(EntityUseEvent.EVENT, (serverPlayer, entity, interactionHand, entityHitResult) -> {
             if (!(entity instanceof ArmorStand) && !(entity instanceof ItemFrame)) {
                 return InteractionResult.PASS;
@@ -988,7 +978,6 @@ public class PlayerEventListener {
             }
             return InteractionResult.PASS;
         });
-
     }
 
     private static InteractionResult interact(Player player, Level world, InteractionHand hand, BlockHitResult hitResult) {
@@ -1743,7 +1732,7 @@ public class PlayerEventListener {
        /* if (event.getRightClicked().getType() == EntityType.UNKNOWN) {
             return;
         }*/
-        Location location = FabricUtil.adapt(GlobalPos.of(serverPlayer.serverLevel().dimension(), entityHitResult.getEntity()
+        Location location = FabricUtil.adapt(GlobalPos.of(serverPlayer.serverLevel().dimension(),entity
                 .getOnPos()));
         PlotArea area = location.getPlotArea();
         if (area == null) {

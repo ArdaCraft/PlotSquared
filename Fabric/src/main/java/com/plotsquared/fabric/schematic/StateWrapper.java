@@ -20,33 +20,14 @@ package com.plotsquared.fabric.schematic;
 
 import com.google.common.base.Preconditions;
 import com.plotsquared.fabric.util.FabricUtil;
-import com.sk89q.jnbt.ByteTag;
 import com.sk89q.jnbt.CompoundTag;
-import com.sk89q.jnbt.ListTag;
-import com.sk89q.jnbt.ShortTag;
-import com.sk89q.jnbt.StringTag;
-import com.sk89q.jnbt.Tag;
-import com.sk89q.worldedit.blocks.BaseItemStack;
-import com.sk89q.worldedit.fabric.FabricAdapter;
-import com.sk89q.worldedit.world.item.ItemType;
-import net.minecraft.core.BlockPos;
+import com.sk89q.worldedit.fabric.FabricWorldEdit;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.Container;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.block.SignBlock;
-import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.checkerframework.checker.nullness.qual.NonNull;
 import org.jetbrains.annotations.NotNull;
-
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Objects;
-import java.util.UUID;
 
 public class StateWrapper {
 
@@ -174,17 +155,23 @@ public class StateWrapper {
 
         return new String(b);
     }
-/*
-
 
     public boolean restoreTag(String worldName, int x, int y, int z) {
         ServerLevel world = FabricUtil.getWorld(worldName);
         if (world == null) {
             return false;
         }
-        return restoreTag(world, world.getBlockState(new BlockPos(x, y, z)), new BlockPos(x, y, z));
+        Entity spawnedEntity = EntityType.loadEntityRecursive((net.minecraft.nbt.CompoundTag) FabricWorldEdit.inst.getFaweAdapter().fromNative(this.tag), world, entity -> {
+            entity.setPos(x, y, z);
+            return entity;
+        });if(spawnedEntity != null) {
+            return world.addFreshEntity(spawnedEntity);
+        } else {
+            return false;
+        }
+        //return restoreTag(world, world.getBlockState(new BlockPos(x, y, z)), new BlockPos(x, y, z));
     }
-
+/*
     @SuppressWarnings("deprecation") // #setLine is needed for Spigot compatibility
     public boolean restoreTag(ServerLevel serverLevel, @NonNull BlockState block, BlockPos blockPos) {
         if (this.tag == null) {
@@ -335,6 +322,5 @@ public class StateWrapper {
             data.put("tag", new CompoundTag(auxData));
         }
         return data;
-    }
-*/
+    }*/
 }
