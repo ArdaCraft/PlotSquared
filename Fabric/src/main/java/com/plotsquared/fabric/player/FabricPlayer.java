@@ -382,8 +382,7 @@ public class FabricPlayer extends PlotPlayer<ServerPlayer> {
                     "music_disc_",
                     "music_disc."
             )), Sound.Source.MUSIC, 1f, 1f);
-            /* TODO UNCOMMENT BEFORE RELEASE */
-            //player.playSound(sound, Sound.Emitter.self());
+            player.playSound(sound, Sound.Emitter.self());
         } catch (Exception e) {
             e.printStackTrace();
         }

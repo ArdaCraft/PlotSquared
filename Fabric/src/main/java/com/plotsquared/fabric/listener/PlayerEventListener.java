@@ -71,6 +71,7 @@ import com.plotsquared.core.util.PlotFlagUtil;
 import com.plotsquared.core.util.entity.EntityCategories;
 import com.plotsquared.core.util.task.TaskManager;
 import com.plotsquared.core.util.task.TaskTime;
+import com.plotsquared.fabric.FabricPlatform;
 import com.plotsquared.fabric.listener.event.BaseFireBlockOnPlaceCallback;
 import com.plotsquared.fabric.listener.event.EmptyContentsCallback;
 import com.plotsquared.fabric.listener.event.EntityHandleInsidePortalCallback;
@@ -80,7 +81,6 @@ import com.plotsquared.fabric.listener.event.HandlePlayerMoveCallback;
 import com.plotsquared.fabric.listener.event.LecternTakeButtonCallback;
 import com.plotsquared.fabric.listener.event.ServerPlayerTeleportToCallback;
 import com.plotsquared.fabric.player.FabricPlayer;
-import com.plotsquared.fabric.player.FabricPlayerManager;
 import com.plotsquared.fabric.util.FabricEntityUtil;
 import com.plotsquared.fabric.util.FabricUtil;
 import com.sk89q.worldedit.WorldEdit;
@@ -89,6 +89,7 @@ import com.sk89q.worldedit.world.block.BlockType;
 import com.sk89q.worldedit.world.entity.EntityType;
 import com.sk89q.worldedit.world.entity.EntityTypes;
 import net.fabricmc.fabric.api.entity.event.v1.ServerEntityWorldChangeEvents;
+import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
@@ -116,7 +117,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
-import net.minecraft.server.network.ServerPlayerConnection;
+import net.minecraft.server.network.ServerLoginPacketListenerImpl;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
@@ -137,9 +138,11 @@ import net.minecraft.world.item.BucketItem;
 import net.minecraft.world.item.DyeItem;
 import net.minecraft.world.item.FireworkRocketItem;
 import net.minecraft.world.item.FireworkStarItem;
+import net.minecraft.world.item.HangingEntityItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.LeadItem;
 import net.minecraft.world.item.SpawnEggItem;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
@@ -301,33 +304,36 @@ public class PlayerEventListener {
         EntityHandleInsidePortalCallback.EVENT.register(this::onPortalEnter);
         LecternTakeButtonCallback.EVENT.register(this::onPlayerTakeLecternBook);
         ServerEntityEvents.ENTITY_LOAD.register((entity, world) -> {
-            if(entity instanceof ServerPlayer serverPlayer) {
-                final ServerPlayer player = serverPlayer;
-                PlotSquared.platform().playerManager().removePlayer(player.getUUID());
-                final PlotPlayer<ServerPlayer> pp = FabricUtil.adapt(player);
+            TaskManager.runTaskLater(() -> {
+                if (entity instanceof ServerPlayer serverPlayer) {
+                    final ServerPlayer player = serverPlayer;
+                    PlotSquared.platform().playerManager().removePlayer(player.getUUID());
+                    final PlotPlayer<ServerPlayer> pp = FabricUtil.adapt(player);
 
-                // we're stripping the country code as we don't want to differ between countries
-                //pp.setLocale(Locale.forLanguageTag(player.getLocale().substring(0, 2)));
+                    // we're stripping the country code as we don't want to differ between countries
+                    //pp.setLocale(Locale.forLanguageTag(player.getLocale().substring(0, 2)));
 
-                Location location = pp.getLocation();
-                PlotArea area = location.getPlotArea();
-                if (area != null) {
-                    Plot plot = area.getPlot(location);
-                    if (plot != null) {
-                        plotListener.plotEntry(pp, plot);
+                    Location location = pp.getLocation();
+                    PlotArea area = location.getPlotArea();
+                    if (area != null) {
+                        Plot plot = area.getPlot(location);
+                        if (plot != null) {
+                            plotListener.plotEntry(pp, plot);
+                        }
                     }
-                }
-                // Async
-                TaskManager.runTaskLaterAsync(() -> {
-                    /* TODO CHECK ON THIS */
+                    // Async
+                    TaskManager.runTaskLaterAsync(() -> {
+                        /* TODO CHECK ON THIS */
                 /*if (!player.hasPlayedBefore() && player.isLocalPlayer()) {
                     player.saveData();
                 }*/
-                    this.eventDispatcher.doJoinTask(pp);
-                }, TaskTime.seconds(1L));
-            }
+                        this.eventDispatcher.doJoinTask(pp);
+                    }, TaskTime.seconds(1L));
+                }
+            }, TaskTime.seconds(3L));
+
         });
-        ServerPlayConnectionEvents.DISCONNECT.register(this::onLeave);
+        ServerLoginConnectionEvents.DISCONNECT.register(this::onLeave);
         ServerPlayerEvents.AFTER_RESPAWN.register((oldPlayer, newPlayer, alive) -> {
             ServerPlayer player = newPlayer;
             PlotPlayer<ServerPlayer> pp = FabricUtil.adapt(player);
@@ -335,7 +341,7 @@ public class PlayerEventListener {
         });
 
         HandlePlayerMoveCallback.EVENT.register((serverboundMovePlayerPacket, serverPlayer) -> {
-            if(!serverboundMovePlayerPacket.hasPosition()) {
+            if (!serverboundMovePlayerPacket.hasPosition()) {
                 return InteractionResult.PASS;
             }
 
@@ -354,7 +360,12 @@ public class PlayerEventListener {
             int x2;
             if (MathMan.roundInt(from.pos().getX()) != (x2 = MathMan.roundInt(to.pos().getX()))) {
                 ServerPlayer player = serverPlayer;
-                FabricPlayer pp = FabricUtil.adapt(player);
+                FabricPlayer pp;
+                       try {
+                          pp = FabricUtil.adapt(player);
+                       } catch (Exception e ) {
+                           return InteractionResult.PASS;
+                       }
                 // Cancel teleport
                 if (TaskManager.removeFromTeleportQueue(pp.getName())) {
                     pp.sendMessage(TranslatableCaption.of("teleport.teleport_failed"));
@@ -739,35 +750,36 @@ public class PlayerEventListener {
             return InteractionResult.FAIL;
         });
         ServerEntityWorldChangeEvents.AFTER_PLAYER_CHANGE_WORLD.register((player, origin, destination) -> {
-            FabricPlayer pp = FabricUtil.adapt(player);
-            // Delete last location
-            Plot plot;
-            try (final MetaDataAccess<Plot> lastPlotAccess =
-                         pp.accessTemporaryMetaData(PlayerMetaDataKeys.TEMPORARY_LAST_PLOT)) {
-                plot = lastPlotAccess.remove();
-            }
-            try (final MetaDataAccess<Location> lastLocationAccess =
-                         pp.accessTemporaryMetaData(PlayerMetaDataKeys.TEMPORARY_LOCATION)) {
-                lastLocationAccess.remove();
-            }
-            if (plot != null) {
-                plotListener.plotExit(pp, plot);
-            }
-            if (this.worldEdit != null) {
-                if (!pp.hasPermission(Permission.PERMISSION_WORLDEDIT_BYPASS)) {
-                    if (pp.getAttribute("worldedit")) {
-                        pp.removeAttribute("worldedit");
+            TaskManager.runTaskLater(() -> {FabricPlayer pp = FabricUtil.adapt(player);
+                // Delete last location
+                Plot plot;
+                try (final MetaDataAccess<Plot> lastPlotAccess =
+                             pp.accessTemporaryMetaData(PlayerMetaDataKeys.TEMPORARY_LAST_PLOT)) {
+                    plot = lastPlotAccess.remove();
+                }
+                try (final MetaDataAccess<Location> lastLocationAccess =
+                             pp.accessTemporaryMetaData(PlayerMetaDataKeys.TEMPORARY_LOCATION)) {
+                    lastLocationAccess.remove();
+                }
+                if (plot != null) {
+                    plotListener.plotExit(pp, plot);
+                }
+                if (this.worldEdit != null) {
+                    if (!pp.hasPermission(Permission.PERMISSION_WORLDEDIT_BYPASS)) {
+                        if (pp.getAttribute("worldedit")) {
+                            pp.removeAttribute("worldedit");
+                        }
                     }
                 }
-            }
-            Location location = pp.getLocation();
-            PlotArea area = location.getPlotArea();
-            if (location.isPlotArea()) {
-                plot = location.getPlot();
-                if (plot != null) {
-                    plotListener.plotEntry(pp, plot);
-                }
-            }
+                Location location = pp.getLocation();
+                PlotArea area = location.getPlotArea();
+                if (location.isPlotArea()) {
+                    plot = location.getPlot();
+                    if (plot != null) {
+                        plotListener.plotEntry(pp, plot);
+                    }
+                }}, TaskTime.seconds(3));
+
         });
         Stimuli.global().listen(PlayerInventoryActionEvent.EVENT, (serverPlayer, i, clickType, i1) -> {
         /*if (!event.isLeftClick() || (event.getAction() != InventoryAction.PLACE_ALL) || event
@@ -776,7 +788,7 @@ public class PlayerEventListener {
         }*/
             if (!this.plotAreaManager
                     .hasPlotArea(serverPlayer.serverLevel().dimension().location().getPath().toString())) {
-                return InteractionResult.SUCCESS;
+                return InteractionResult.PASS;
             }
 
             FabricPlayer pp = FabricUtil.adapt(serverPlayer);
@@ -904,7 +916,7 @@ public class PlayerEventListener {
                 if ((oldItem.getItem() == newItem.getItem()) && (oldItem.getDamageValue()) == newItem
                         .getDamageValue()) {
                     serverPlayer.inventoryMenu.setCarried(newItemCopy);
-                    return InteractionResult.SUCCESS;
+                    return InteractionResult.PASS;
                 }
                 serverPlayer.inventoryMenu.setCarried(
                         newItemCopy);
@@ -1090,7 +1102,10 @@ public class PlayerEventListener {
                 uuid = UUID.nameUUIDFromBytes(("OfflinePlayer:" + handler.player.getName().getString()
                         .toLowerCase()).getBytes(Charsets.UTF_8));
             } else {
-                uuid = UUID.nameUUIDFromBytes(("OfflinePlayer:" + handler.getPlayer().getName().getString()).getBytes(Charsets.UTF_8));
+                uuid = UUID.nameUUIDFromBytes(("OfflinePlayer:" + handler
+                        .getPlayer()
+                        .getName()
+                        .getString()).getBytes(Charsets.UTF_8));
             }
         } else {
             uuid = UUID.fromString(handler.player.getStringUUID());
@@ -1508,100 +1523,44 @@ public class PlayerEventListener {
             ServerboundContainerClosePacket serverboundContainerClosePacket,
             ServerPlayer serverPlayer
     ) {
-        PlotInventory.removePlotInventoryOpen(FabricUtil.adapt(serverPlayer));
+        TaskManager.runTaskLaterAsync(() -> {
+            PlotInventory.removePlotInventoryOpen(FabricUtil.adapt(serverPlayer));
+        }, TaskTime.seconds(3L));
         return InteractionResult.PASS;
     }
 
-    public void onLeave(ServerGamePacketListenerImpl handler, MinecraftServer server) {
-        TaskManager.removeFromTeleportQueue(handler.player.getName().getString());
-        FabricPlayer pp = FabricUtil.adapt(handler.getPlayer());
+    public void onLeave(ServerLoginPacketListenerImpl handler, MinecraftServer server) {
+        TaskManager.removeFromTeleportQueue(handler.getUserName());
+        FabricPlayer pp = FabricUtil.adapt(FabricPlatform.SERVER.getPlayerList().getPlayerByName(handler.getUserName()));
         pp.unregister();
         plotListener.logout(pp.getUUID());
     }
 
     public InteractionResult onBucketFill(Player player, Level level, InteractionHand hand, BlockHitResult hitResult) {
         if (player instanceof ServerPlayer serverPlayer) {
-            BlockPos blockClicked = hitResult.getBlockPos();
-            Location location = FabricUtil.adapt(GlobalPos.of(level.dimension(), blockClicked));
-            PlotArea area = location.getPlotArea();
-            if (area == null) {
-                return InteractionResult.PASS;
-            }
-            FabricPlayer plotPlayer = FabricUtil.adapt(serverPlayer);
-            Plot plot = area.getPlot(location);
-            if (plot == null) {
-                if (plotPlayer.hasPermission(Permission.PERMISSION_ADMIN_BUILD_ROAD)) {
+            if (serverPlayer.getUseItem().getItem() instanceof BucketItem) {
+                BlockPos blockClicked = hitResult.getBlockPos();
+                Location location = FabricUtil.adapt(GlobalPos.of(level.dimension(), blockClicked));
+                PlotArea area = location.getPlotArea();
+                if (area == null) {
                     return InteractionResult.PASS;
                 }
-                plotPlayer.sendMessage(
-                        TranslatableCaption.of("permission.no_permission_event"),
-                        TagResolver.resolver("node", Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_ROAD))
-                );
-                return InteractionResult.FAIL;
-            } else if (!plot.hasOwner()) {
-                if (plotPlayer.hasPermission(Permission.PERMISSION_ADMIN_BUILD_UNOWNED)) {
-                    return InteractionResult.PASS;
-                }
-                plotPlayer.sendMessage(
-                        TranslatableCaption.of("permission.no_permission_event"),
-                        TagResolver.resolver(
-                                "node",
-                                Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_UNOWNED)
-                        )
-                );
-                return InteractionResult.FAIL;
-            } else if (!plot.isAdded(plotPlayer.getUUID())) {
-                if (plotPlayer.hasPermission(Permission.PERMISSION_ADMIN_BUILD_OTHER)) {
-                    return InteractionResult.PASS;
-                }
-                plotPlayer.sendMessage(
-                        TranslatableCaption.of("permission.no_permission_event"),
-                        TagResolver.resolver(
-                                "node",
-                                Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_OTHER)
-                        )
-                );
-                return InteractionResult.FAIL;
-            } else if (Settings.Done.RESTRICT_BUILDING && DoneFlag.isDone(plot)) {
-                if (!plotPlayer.hasPermission(Permission.PERMISSION_ADMIN_BUILD_OTHER)) {
+                FabricPlayer plotPlayer = FabricUtil.adapt(serverPlayer);
+                Plot plot = area.getPlot(location);
+                if (plot == null) {
+                    if (plotPlayer.hasPermission(Permission.PERMISSION_ADMIN_BUILD_ROAD)) {
+                        return InteractionResult.PASS;
+                    }
                     plotPlayer.sendMessage(
-                            TranslatableCaption.of("done.building_restricted")
+                            TranslatableCaption.of("permission.no_permission_event"),
+                            TagResolver.resolver("node", Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_ROAD))
                     );
                     return InteractionResult.FAIL;
-                }
-            }
-        }
-        return InteractionResult.PASS;
-    }
-
-    public InteractionResult onHangingPlace(ServerPlayer player, InteractionHand hand, BlockHitResult hitResult) {
-        Block block = player.serverLevel().getBlockState(hitResult.getBlockPos()).getBlock();
-        Location location = FabricUtil.adapt(GlobalPos.of(player.serverLevel().dimension(), hitResult.getBlockPos()));
-        PlotArea area = location.getPlotArea();
-        if (area == null) {
-            return InteractionResult.PASS;
-        }
-        ServerPlayer p = player;
-        if (p == null) {
-            return InteractionResult.FAIL;
-        }
-        FabricPlayer pp = FabricUtil.adapt(p);
-        Plot plot = area.getPlot(location);
-        if (plot == null) {
-            if (!pp.hasPermission(Permission.PERMISSION_ADMIN_BUILD_ROAD)) {
-                pp.sendMessage(
-                        TranslatableCaption.of("permission.no_permission_event"),
-                        TagResolver.resolver(
-                                "node",
-                                Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_ROAD)
-                        )
-                );
-                return InteractionResult.FAIL;
-            }
-        } else {
-            if (!plot.hasOwner()) {
-                if (!pp.hasPermission(Permission.PERMISSION_ADMIN_BUILD_UNOWNED)) {
-                    pp.sendMessage(
+                } else if (!plot.hasOwner()) {
+                    if (plotPlayer.hasPermission(Permission.PERMISSION_ADMIN_BUILD_UNOWNED)) {
+                        return InteractionResult.PASS;
+                    }
+                    plotPlayer.sendMessage(
                             TranslatableCaption.of("permission.no_permission_event"),
                             TagResolver.resolver(
                                     "node",
@@ -1609,22 +1568,84 @@ public class PlayerEventListener {
                             )
                     );
                     return InteractionResult.FAIL;
+                } else if (!plot.isAdded(plotPlayer.getUUID())) {
+                    if (plotPlayer.hasPermission(Permission.PERMISSION_ADMIN_BUILD_OTHER)) {
+                        return InteractionResult.PASS;
+                    }
+                    plotPlayer.sendMessage(
+                            TranslatableCaption.of("permission.no_permission_event"),
+                            TagResolver.resolver(
+                                    "node",
+                                    Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_OTHER)
+                            )
+                    );
+                    return InteractionResult.FAIL;
+                } else if (Settings.Done.RESTRICT_BUILDING && DoneFlag.isDone(plot)) {
+                    if (!plotPlayer.hasPermission(Permission.PERMISSION_ADMIN_BUILD_OTHER)) {
+                        plotPlayer.sendMessage(
+                                TranslatableCaption.of("done.building_restricted")
+                        );
+                        return InteractionResult.FAIL;
+                    }
                 }
+            }
+        }
+        return InteractionResult.PASS;
+    }
+
+    public InteractionResult onHangingPlace(ServerPlayer player, InteractionHand hand, BlockHitResult hitResult) {
+        if (player.getUseItem().getItem() instanceof HangingEntityItem || player.getUseItem().getItem().equals(Items.PAINTING) || player.getUseItem().getItem() instanceof LeadItem) {
+            Block block = player.serverLevel().getBlockState(hitResult.getBlockPos()).getBlock();
+            Location location = FabricUtil.adapt(GlobalPos.of(player.serverLevel().dimension(), hitResult.getBlockPos()));
+            PlotArea area = location.getPlotArea();
+            if (area == null) {
                 return InteractionResult.PASS;
             }
-            if (!plot.isAdded(pp.getUUID())) {
-                if (!plot.getFlag(HangingPlaceFlag.class)) {
-                    if (!pp.hasPermission(Permission.PERMISSION_ADMIN_BUILD_OTHER)) {
+            ServerPlayer p = player;
+            if (p == null) {
+                return InteractionResult.FAIL;
+            }
+            FabricPlayer pp = FabricUtil.adapt(p);
+            Plot plot = area.getPlot(location);
+            if (plot == null) {
+                if (!pp.hasPermission(Permission.PERMISSION_ADMIN_BUILD_ROAD)) {
+                    pp.sendMessage(
+                            TranslatableCaption.of("permission.no_permission_event"),
+                            TagResolver.resolver(
+                                    "node",
+                                    Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_ROAD)
+                            )
+                    );
+                    return InteractionResult.FAIL;
+                }
+            } else {
+                if (!plot.hasOwner()) {
+                    if (!pp.hasPermission(Permission.PERMISSION_ADMIN_BUILD_UNOWNED)) {
                         pp.sendMessage(
                                 TranslatableCaption.of("permission.no_permission_event"),
                                 TagResolver.resolver(
                                         "node",
-                                        Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_OTHER)
+                                        Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_UNOWNED)
                                 )
                         );
                         return InteractionResult.FAIL;
                     }
                     return InteractionResult.PASS;
+                }
+                if (!plot.isAdded(pp.getUUID())) {
+                    if (!plot.getFlag(HangingPlaceFlag.class)) {
+                        if (!pp.hasPermission(Permission.PERMISSION_ADMIN_BUILD_OTHER)) {
+                            pp.sendMessage(
+                                    TranslatableCaption.of("permission.no_permission_event"),
+                                    TagResolver.resolver(
+                                            "node",
+                                            Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_OTHER)
+                                    )
+                            );
+                            return InteractionResult.FAIL;
+                        }
+                        return InteractionResult.PASS;
+                    }
                 }
             }
         }
@@ -1732,7 +1753,7 @@ public class PlayerEventListener {
        /* if (event.getRightClicked().getType() == EntityType.UNKNOWN) {
             return;
         }*/
-        Location location = FabricUtil.adapt(GlobalPos.of(serverPlayer.serverLevel().dimension(),entity
+        Location location = FabricUtil.adapt(GlobalPos.of(serverPlayer.serverLevel().dimension(), entity
                 .getOnPos()));
         PlotArea area = location.getPlotArea();
         if (area == null) {
@@ -1765,8 +1786,7 @@ public class PlayerEventListener {
             }
         } else if ((plot != null && !plot.isAdded(pp.getUUID())) || (plot == null && area
                 .isRoadFlags())) {
-            final com.sk89q.worldedit.world.entity.EntityType entityType =
-                    EntityType.REGISTRY.get(entity.getType().toString());
+            final com.sk89q.worldedit.world.entity.EntityType entityType = EntityType.REGISTRY.get(entity.getType().toShortString());
 
             FlagContainer flagContainer;
             if (plot == null) {
@@ -1994,7 +2014,7 @@ public class PlayerEventListener {
             Direction.Axis axis,
             Operation<Optional<PortalShape>> original
     ) {
-        if(levelAccessor instanceof ServerLevel serverLevel) {
+        if (levelAccessor instanceof ServerLevel serverLevel) {
             Location location = FabricUtil.adapt(GlobalPos.of(serverLevel.dimension(), blockPos));
             PlotArea area = location.getPlotArea();
             if (area == null) {
@@ -2010,7 +2030,8 @@ public class PlayerEventListener {
             if (plot.getFlag(DenyPortalsFlag.class)) {
                 StringBuilder builder = new StringBuilder();
                 if (serverLevel.getServer().getPlayerList().getPlayer(plot.getOwner()) != null) {
-                    builder.append(serverLevel.getServer().getPlayerList().getPlayer(plot.getOwner()).getName()).append(" did not create a portal");
+                    builder.append(serverLevel.getServer().getPlayerList().getPlayer(plot.getOwner()).getName()).append(
+                            " did not create a portal");
                 } else {
                     builder.append("Portal creation cancelled");
                 }
@@ -2025,7 +2046,14 @@ public class PlayerEventListener {
 
     public InteractionResult onEndPortalCreation(UseOnContext useOnContext, BlockPattern.BlockPatternMatch blockPatternMatch) {
         String world =
-                useOnContext.getPlayer().getServer().getLevel(useOnContext.getLevel().dimension()).dimension().location().getPath().toString();
+                useOnContext
+                        .getPlayer()
+                        .getServer()
+                        .getLevel(useOnContext.getLevel().dimension())
+                        .dimension()
+                        .location()
+                        .getPath()
+                        .toString();
         if (PlotSquared.get().getPlotAreaManager().getPlotAreasSet(world).size() == 0) {
             return InteractionResult.FAIL;
         }
@@ -2083,7 +2111,10 @@ public class PlayerEventListener {
         return InteractionResult.PASS;
     }
 
-    public InteractionResult onPlayerTakeLecternBook(ServerboundContainerButtonClickPacket serverboundContainerButtonClickPacket, ServerPlayer player) {
+    public InteractionResult onPlayerTakeLecternBook(
+            ServerboundContainerButtonClickPacket serverboundContainerButtonClickPacket,
+            ServerPlayer player
+    ) {
         FabricPlayer pp = FabricUtil.adapt(player);
         Location location = pp.getLocation();
         PlotArea area = location.getPlotArea();

@@ -185,7 +185,7 @@ public class ChunkListener {
             return;
         }
         if (Settings.Chunk_Processor.AUTO_TRIM) {
-            String world = serverLevel.dimension().location().getPath().toString();
+            String world = serverLevel.dimension().location().getPath();
             if ((!Settings.Enabled_Components.WORLDS || !SinglePlotArea.isSinglePlotWorld(world)) && this.plotAreaManager.hasPlotArea(
                     world)) {
                 serverLevel.unload(chunk);

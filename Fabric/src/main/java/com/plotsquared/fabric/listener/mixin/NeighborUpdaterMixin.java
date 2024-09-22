@@ -1,8 +1,8 @@
 package com.plotsquared.fabric.listener.mixin;
 
-import com.plotsquared.fabric.listener.event.EmptyContentsCallback;
 import com.plotsquared.fabric.listener.event.OnExecuteUpdateCallback;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
@@ -34,5 +34,4 @@ public interface NeighborUpdaterMixin {
             ci.cancel();
         }
     }
-
 }

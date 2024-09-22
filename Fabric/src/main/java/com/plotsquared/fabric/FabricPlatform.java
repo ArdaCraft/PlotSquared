@@ -836,6 +836,11 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
                                     }
                                     continue;
                                 }
+
+                                if(!entity.hasAttached(PlotSquaredDataAttachments.PLOT)) {
+                                    continue;
+                                }
+
                                 List<Plot> meta =
                                         entity.getAttached(PlotSquaredDataAttachments.PLOT)
                                                 .stream()

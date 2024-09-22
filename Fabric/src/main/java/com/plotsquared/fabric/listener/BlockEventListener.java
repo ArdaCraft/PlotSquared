@@ -98,6 +98,8 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.CommandBlock;
+import net.minecraft.world.level.block.ConcretePowderBlock;
 import net.minecraft.world.level.block.DispenserBlock;
 import net.minecraft.world.level.block.DropperBlock;
 import net.minecraft.world.level.block.FallingBlock;
@@ -118,7 +120,6 @@ import xyz.nucleoid.stimuli.event.block.DispenserActivateEvent;
 import xyz.nucleoid.stimuli.event.world.ExplosionDetonatedEvent;
 import xyz.nucleoid.stimuli.event.world.FireTickEvent;
 import xyz.nucleoid.stimuli.event.world.FluidFlowEvent;
-import xyz.nucleoid.stimuli.event.world.SnowFallEvent;
 
 import java.util.Iterator;
 import java.util.List;
@@ -190,79 +191,79 @@ public class BlockEventListener {
     public InteractionResult blockCreate(
             ServerPlayer player, ServerLevel world, BlockPos pos, BlockState state, UseOnContext context
     ) {
-        Location location = FabricUtil.adapt(GlobalPos.of(world.dimension(), pos));
-        PlotArea area = location.getPlotArea();
-        if (area == null) {
-            return InteractionResult.PASS;
-        }
-        FabricPlayer pp = FabricUtil.adapt(player);
-        Plot plot = area.getPlot(location);
-        if (plot != null) {
-            if (area.notifyIfOutsideBuildArea(pp, location.getY())) {
-                pp.sendMessage(
-                        TranslatableCaption.of("height.height_limit"),
-                        TagResolver.builder()
-                                .tag("minheight", Tag.inserting(Component.text(area.getMinBuildHeight())))
-                                .tag("maxheight", Tag.inserting(Component.text(area.getMaxBuildHeight())))
-                                .build()
-                );
-                return InteractionResult.FAIL;
+            Location location = FabricUtil.adapt(GlobalPos.of(world.dimension(), pos));
+            PlotArea area = location.getPlotArea();
+            if (area == null) {
+                return InteractionResult.PASS;
             }
-            if (!plot.hasOwner()) {
-                if (!pp.hasPermission(Permission.PERMISSION_ADMIN_BUILD_UNOWNED)) {
+            FabricPlayer pp = FabricUtil.adapt(player);
+            Plot plot = area.getPlot(location);
+            if (plot != null) {
+                if (area.notifyIfOutsideBuildArea(pp, location.getY())) {
                     pp.sendMessage(
-                            TranslatableCaption.of("permission.no_permission_event"),
-                            TagResolver.resolver(
-                                    "node",
-                                    Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_UNOWNED)
-                            )
+                            TranslatableCaption.of("height.height_limit"),
+                            TagResolver.builder()
+                                    .tag("minheight", Tag.inserting(Component.text(area.getMinBuildHeight())))
+                                    .tag("maxheight", Tag.inserting(Component.text(area.getMaxBuildHeight())))
+                                    .build()
                     );
                     return InteractionResult.FAIL;
                 }
-            } else if (!plot.isAdded(pp.getUUID())) {
-                List<BlockTypeWrapper> place = plot.getFlag(PlaceFlag.class);
-                if (place != null) {
-                    if (place.contains(
-                            BlockTypeWrapper.get(FabricAdapter.adapt(state.getBlock())))) {
-                        return InteractionResult.PASS;
+                if (!plot.hasOwner()) {
+                    if (!pp.hasPermission(Permission.PERMISSION_ADMIN_BUILD_UNOWNED)) {
+                        pp.sendMessage(
+                                TranslatableCaption.of("permission.no_permission_event"),
+                                TagResolver.resolver(
+                                        "node",
+                                        Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_UNOWNED)
+                                )
+                        );
+                        return InteractionResult.FAIL;
+                    }
+                } else if (!plot.isAdded(pp.getUUID())) {
+                    List<BlockTypeWrapper> place = plot.getFlag(PlaceFlag.class);
+                    if (place != null) {
+                        if (place.contains(
+                                BlockTypeWrapper.get(FabricAdapter.adapt(state.getBlock())))) {
+                            return InteractionResult.PASS;
+                        }
+                    }
+                    if (!pp.hasPermission(Permission.PERMISSION_ADMIN_BUILD_OTHER)) {
+                        pp.sendMessage(
+                                TranslatableCaption.of("permission.no_permission_event"),
+                                TagResolver.resolver(
+                                        "node",
+                                        Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_OTHER)
+                                )
+                        );
+                        plot.debug(player.getName() + " could not place " + state.getBlock().getName()
+                                + " because of the place = false");
+                        return InteractionResult.FAIL;
+                    }
+                } else if (Settings.Done.RESTRICT_BUILDING && DoneFlag.isDone(plot)) {
+                    if (!pp.hasPermission(Permission.PERMISSION_ADMIN_BUILD_OTHER)) {
+                        pp.sendMessage(
+                                TranslatableCaption.of("done.building_restricted")
+                        );
+                        return InteractionResult.FAIL;
                     }
                 }
-                if (!pp.hasPermission(Permission.PERMISSION_ADMIN_BUILD_OTHER)) {
-                    pp.sendMessage(
-                            TranslatableCaption.of("permission.no_permission_event"),
-                            TagResolver.resolver(
-                                    "node",
-                                    Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_OTHER)
-                            )
-                    );
-                    plot.debug(player.getName() + " could not place " + state.getBlock().getName()
-                            + " because of the place = false");
-                    return InteractionResult.FAIL;
+                if (plot.getFlag(DisablePhysicsFlag.class)) {
+                    if (state.getBlock() instanceof FallingBlock) {
+                        sendBlockChange(GlobalPos.of(world.dimension(), pos), state);
+                        plot.debug(state.getBlock().getName()
+                                + " did not fall because of disable-physics = true");
+                    }
                 }
-            } else if (Settings.Done.RESTRICT_BUILDING && DoneFlag.isDone(plot)) {
-                if (!pp.hasPermission(Permission.PERMISSION_ADMIN_BUILD_OTHER)) {
-                    pp.sendMessage(
-                            TranslatableCaption.of("done.building_restricted")
-                    );
-                    return InteractionResult.FAIL;
-                }
-            }
-            if (plot.getFlag(DisablePhysicsFlag.class)) {
-                if (state.getBlock() instanceof FallingBlock) {
-                    sendBlockChange(GlobalPos.of(world.dimension(), pos), state);
-                    plot.debug(state.getBlock().getName()
-                            + " did not fall because of disable-physics = true");
-                }
-            }
-        } else if (!pp.hasPermission(Permission.PERMISSION_ADMIN_BUILD_ROAD)) {
-            pp.sendMessage(
-                    TranslatableCaption.of("permission.no_permission_event"),
-                    TagResolver.resolver(
-                            "node",
-                            Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_ROAD)
-                    )
-            );
-            return InteractionResult.FAIL;
+            } else if (!pp.hasPermission(Permission.PERMISSION_ADMIN_BUILD_ROAD)) {
+                pp.sendMessage(
+                        TranslatableCaption.of("permission.no_permission_event"),
+                        TagResolver.resolver(
+                                "node",
+                                Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_ROAD)
+                        )
+                );
+                return InteractionResult.FAIL;
         }
         return InteractionResult.PASS;
     }
@@ -271,6 +272,9 @@ public class BlockEventListener {
             ServerPlayer player, ServerLevel world, BlockPos pos, BlockState state,
             @Nullable UseOnContext context
     ) {
+        if(state.getBlock() instanceof CommandBlock) {
+            return InteractionResult.FAIL;
+        }
         Location location = FabricUtil.adapt(GlobalPos.of(world.dimension(), pos));
         PlotArea area = location.getPlotArea();
         if (area == null) {
@@ -305,7 +309,7 @@ public class BlockEventListener {
                 if (place != null) {
                     if (place.contains(
                             BlockTypeWrapper.get(FabricAdapter.adapt(state.getBlock())))) {
-                        return InteractionResult.SUCCESS;
+                        return InteractionResult.PASS;
                     }
                 }
                 if (!pp.hasPermission(Permission.PERMISSION_ADMIN_BUILD_OTHER)) {
@@ -345,7 +349,7 @@ public class BlockEventListener {
             );*/
             return InteractionResult.FAIL;
         }
-        return InteractionResult.SUCCESS;
+        return InteractionResult.PASS;
     }
 
 
@@ -589,12 +593,6 @@ public class BlockEventListener {
         if (blockState.is(BlockTags.ICE)) {
             if (!plot.getFlag(IceFormFlag.class)) {
                 plot.debug("Ice could not form because ice-form = false");
-                return InteractionResult.FAIL;
-            }
-        }
-        if (blockState.getBlock().getName().getString().endsWith("concrete")) {
-            if (!plot.getFlag(ConcreteHardenFlag.class)) {
-                plot.debug("Concrete powder could not harden because concrete-harden = false");
                 return InteractionResult.FAIL;
             }
         }
@@ -1147,6 +1145,7 @@ public class BlockEventListener {
             if (plot != null) {
                 plot.debug("Explosion was cancelled because explosion = false");
             }
+            explosion.clearToBlow();
             if (Settings.General.ALWAYS_SHOW_EXPLOSIONS) {
                 explosion.getDirectSourceEntity().level().addParticle(ParticleTypes.EXPLOSION, location.getX(), location.getY()
                         , location.getZ(), 0.0, 0.0, 0.0);
@@ -1179,7 +1178,7 @@ public class BlockEventListener {
     }
 
     public InteractionResult onBlockIgnite(BlockPos blockPos, BlockState blockState, int i, Level level) {
-        if(blockState.getBlock() == Blocks.FIRE) {
+        if (blockState.getBlock() == Blocks.FIRE) {
             Location location1 = FabricUtil.adapt(GlobalPos.of(level.dimension(), blockPos));
             PlotArea area = location1.getPlotArea();
             if (area == null) {

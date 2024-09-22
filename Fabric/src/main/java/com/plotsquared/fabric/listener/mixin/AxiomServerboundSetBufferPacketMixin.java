@@ -1,7 +1,5 @@
 package com.plotsquared.fabric.listener.mixin;
 
-import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
-import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.moulberry.axiom.VersionUtils;
 import com.moulberry.axiom.hooks.ServerLevelExt;
 import com.moulberry.axiom.packets.AxiomServerboundPacket;

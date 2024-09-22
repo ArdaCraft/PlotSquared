@@ -23,9 +23,7 @@ import com.plotsquared.core.PlotSquared;
 import com.plotsquared.core.generator.GeneratorWrapper;
 import com.plotsquared.core.plot.world.PlotAreaManager;
 import com.plotsquared.core.plot.world.SinglePlotAreaManager;
-import com.plotsquared.fabric.FabricPlatform;
 import com.plotsquared.fabric.generator.FabricPlotGenerator;
-import net.fabricmc.fabric.api.event.lifecycle.v1.ServerChunkEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerWorldEvents;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -34,8 +32,6 @@ import net.minecraft.util.Unit;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.ChunkGenerator;
 import org.checkerframework.checker.nullness.qual.NonNull;
-
-import java.util.logging.Logger;
 
 @SuppressWarnings("unused")
 public class WorldEvents {

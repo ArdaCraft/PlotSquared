@@ -1,15 +1,16 @@
 {
-  "required" : true,
-  "minVersion" : "0.8",
-  "package" : "com.plotsquared.fabric.listener.mixin",
-  "compatibilityLevel" : "JAVA_17",
-  "mixins" : [
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.plotsquared.fabric.listener.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "mixins": [
     "AxiomServerboundSetBlockPacketMixin",
     "AxiomServerboundSetBufferPacketMixin",
     "BaseFireBlockMixin",
     "BoatMixin",
     "BucketItemMixin",
     "CauldronInteractionMixin",
+    "ConcretePowderBlockMixin",
     "ConfiguredFeatureMixin",
     "EntityMixin",
     "ExplosionMixin",
@@ -33,9 +34,9 @@
     "SpongeBlockMixin",
     "ThrownPotionMixin"
   ],
-  "client" : [
+  "client": [
   ],
-  "injectors" : {
-    "defaultRequire" : 1
+  "injectors": {
+    "defaultRequire": 1
   }
 }
