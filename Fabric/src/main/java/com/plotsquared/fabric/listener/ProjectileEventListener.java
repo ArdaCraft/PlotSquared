@@ -153,6 +153,9 @@ public class ProjectileEventListener {
         }
         Plot plot = area.getPlot(location);
         Entity shooter = entity.getOwner();
+        if (shooter == null) {
+            return InteractionResult.FAIL;
+        }
         if (shooter instanceof ServerPlayer player) {
             if (!(player.connection.isAcceptingMessages())) {
                 if (plot != null) {

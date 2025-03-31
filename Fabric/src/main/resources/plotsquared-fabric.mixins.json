@@ -6,6 +6,7 @@
   "mixins": [
     "AxiomServerboundSetBlockPacketMixin",
     "AxiomServerboundSetBufferPacketMixin",
+    "AxiomServerboundSpawnEntityMixin",
     "BaseFireBlockMixin",
     "BoatMixin",
     "BucketItemMixin",

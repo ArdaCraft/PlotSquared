@@ -242,7 +242,7 @@ public class ChunkListener {
                entity.remove(Entity.RemovalReason.DISCARDED);
                 return InteractionResult.FAIL;
             }
-            if (!this.plotAreaManager.hasPlotArea(serverLevel.dimension().location().getPath().toString())) {
+            if (!this.plotAreaManager.hasPlotArea(serverLevel.dimension().location().getPath())) {
                 return InteractionResult.PASS;
             }
             Entity[] entities = FabricUtil.getEntitiesInChunk(serverLevel, chunk).toArray(new Entity[0]);

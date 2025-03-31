@@ -182,7 +182,7 @@ public class BlockEventListener {
                     if (16 * Math.abs(location.getX() - x) / 16 > distance || 16 * Math.abs(location.getZ() - z) / 16 > distance) {
                         continue;
                     }
-                    ((FabricPlayer) player).player.serverLevel().blockUpdated(bloc.pos(), data.getBlock());
+                    ((FabricPlayer) player).getPlatformPlayer().serverLevel().blockUpdated(bloc.pos(), data.getBlock());
                 }
             }
         }, TaskTime.ticks(3L));

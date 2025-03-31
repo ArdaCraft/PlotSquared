@@ -110,7 +110,7 @@ public class ForceFieldListener {
                 Set<PlotPlayer<?>> players = getNearbyPlayers(player, plot);
                 for (PlotPlayer<?> oPlayer : players) {
                     if (!oPlayer.hasPermission(Permission.PERMISSION_ADMIN_ENTRY_FORCEFIELD)) {
-                        ((FabricPlayer) oPlayer).player
+                        ((FabricPlayer) oPlayer).getPlatformPlayer()
                                 .setDeltaMovement(calculateVelocity(plotPlayer, oPlayer));
                     }
                 }

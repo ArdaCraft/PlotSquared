@@ -14,6 +14,7 @@ import com.plotsquared.core.plot.world.PlotAreaManager;
 import com.plotsquared.core.util.EventDispatcher;
 import com.plotsquared.core.util.MathMan;
 import com.plotsquared.core.util.WorldUtil;
+import com.plotsquared.fabric.FabricPlatform;
 import com.plotsquared.fabric.util.FabricUtil;
 import com.sk89q.worldedit.extension.platform.Actor;
 import com.sk89q.worldedit.fabric.FabricAdapter;
@@ -50,7 +51,7 @@ import static com.sk89q.worldedit.world.gamemode.GameModes.SURVIVAL;
 public class FabricPlayer extends PlotPlayer<ServerPlayer> {
 
     private static boolean CHECK_EFFECTIVE = true;
-    public final ServerPlayer player;
+    public final UUID uuid;
     private String name;
 
     public PlotWeather weather = PlotWeather.OFF;
@@ -70,7 +71,7 @@ public class FabricPlayer extends PlotPlayer<ServerPlayer> {
             final @NonNull PermissionHandler permissionHandler
     ) {
         super(plotAreaManager, eventDispatcher, permissionHandler);
-        this.player = player;
+        this.uuid = player.getUUID();
         this.setupPermissionProfile();
         if (realPlayer) {
             super.populatePersistentMetaMap();
@@ -79,79 +80,53 @@ public class FabricPlayer extends PlotPlayer<ServerPlayer> {
 
         ServerTickEvents.END_WORLD_TICK.register(server -> {
             //handle weather
-            switch (weather) {
-                case CLEAR -> {
-                   // this.player.connection.send(new ClientboundGameEventPacket(ClientboundGameEventPacket.STOP_RAINING, 0.0F));
-                    this.player.connection.send(new ClientboundGameEventPacket(
-                            ClientboundGameEventPacket.RAIN_LEVEL_CHANGE,
-                            0.0F
-                    ));
-                }
-                case RAIN -> {
-                  //  this.player.connection.send(new ClientboundGameEventPacket(ClientboundGameEventPacket.START_RAINING, 0.0F));
-                    this.player.connection.send(new ClientboundGameEventPacket(
-                            ClientboundGameEventPacket.RAIN_LEVEL_CHANGE,
-                            1.0F
-                    ));
-                }
-                case WORLD -> {
-                    //if (this.player.serverLevel().isRaining()) {
-                        /*this.player.connection.send(new ClientboundGameEventPacket(
-                                ClientboundGameEventPacket.START_RAINING,
-                                0.0F
-                        ));*/
-                        this.player.connection.send(new ClientboundGameEventPacket(ClientboundGameEventPacket.RAIN_LEVEL_CHANGE
-                                , this.player.serverLevel().rainLevel));
-                   // } else {
-                        /*this.player.connection.send(new ClientboundGameEventPacket(
-                                ClientboundGameEventPacket.STOP_RAINING,
-                                0.0F
-                        ));*/
-                        /*this.player.connection.send(new ClientboundGameEventPacket(ClientboundGameEventPacket.RAIN_LEVEL_CHANGE
-                                , this.player.serverLevel().rainLevel));*/
-                    //}
-                }
-                default -> {
-                    /*if (this.player.serverLevel().isRaining()) {
-                        /*this.player.connection.send(new ClientboundGameEventPacket(
-                                ClientboundGameEventPacket.START_RAINING,
-                                0.0F
-                        ));*/
-                        this.player.connection.send(new ClientboundGameEventPacket(ClientboundGameEventPacket.RAIN_LEVEL_CHANGE
-                                , this.player.serverLevel().rainLevel));
-                    /*} else {
-                       /* this.player.connection.send(new ClientboundGameEventPacket(
-                                ClientboundGameEventPacket.STOP_RAINING,
-                                0.0F
-                        ));*/
-                        /*this.player.connection.send(new ClientboundGameEventPacket(ClientboundGameEventPacket.RAIN_LEVEL_CHANGE
-                                , this.player.serverLevel().rainLevel));
-                    }*/
-                    //do nothing as this is PlotWeather.OFF
-                }
-            }
-            //handle time
-            if (time != Long.MIN_VALUE && time != Long.MAX_VALUE) {
-                this.player.connection.send(new ClientboundSetTimePacket(time, time, true));
 
-            } else {
-                this.player.connection.send(new ClientboundSetTimePacket(
-                        this.player.serverLevel().getGameTime(),
-                        this.player.serverLevel().dayTime(),
-                        this.player.serverLevel().getGameRules().getBoolean(GameRules.RULE_DAYLIGHT)
-                ));
+            if (this.getPlatformPlayer() != null) {
+                switch (weather) {
+                    case CLEAR -> {
+                        this.getPlatformPlayer().connection.send(new ClientboundGameEventPacket(
+                                ClientboundGameEventPacket.RAIN_LEVEL_CHANGE,
+                                0.0F
+                        ));
+                    }
+                    case RAIN -> {
+                        this.getPlatformPlayer().connection.send(new ClientboundGameEventPacket(
+                                ClientboundGameEventPacket.RAIN_LEVEL_CHANGE,
+                                1.0F
+                        ));
+                    }
+                    case WORLD -> {
+                        this.getPlatformPlayer().connection.send(new ClientboundGameEventPacket(ClientboundGameEventPacket.RAIN_LEVEL_CHANGE
+                                , this.getPlatformPlayer().serverLevel().rainLevel));
+                    }
+                    default -> {
+                        this.getPlatformPlayer().connection.send(new ClientboundGameEventPacket(ClientboundGameEventPacket.RAIN_LEVEL_CHANGE
+                                , this.getPlatformPlayer().serverLevel().rainLevel));
+                    }
+                }
+                //handle time
+                if (time != Long.MIN_VALUE && time != Long.MAX_VALUE) {
+                    this.getPlatformPlayer().connection.send(new ClientboundSetTimePacket(time, time, true));
+
+                } else {
+                    this.getPlatformPlayer().connection.send(new ClientboundSetTimePacket(
+                            this.getPlatformPlayer().serverLevel().getGameTime(),
+                            this.getPlatformPlayer().serverLevel().dayTime(),
+                            this.getPlatformPlayer().serverLevel().getGameRules().getBoolean(GameRules.RULE_DAYLIGHT)
+                    ));
+                }
             }
         });
     }
 
     @Override
     public Actor toActor() {
-        return FabricAdapter.adaptPlayer(player);
+        return FabricAdapter.adaptPlayer(this.getPlatformPlayer());
     }
 
     @Override
     public ServerPlayer getPlatformPlayer() {
-        return this.player;
+        return FabricPlatform.SERVER.getPlayerList().getPlayer(this.uuid);
     }
 
     @NonNull
@@ -166,13 +141,13 @@ public class FabricPlayer extends PlotPlayer<ServerPlayer> {
                         getName()).getBytes(Charsets.UTF_8));
             }
         }
-        return player.getUUID();
+        return this.uuid;
     }
 
     @Override
     @NonNegative
     public long getLastPlayed() {
-        return this.player.getLastActionTime();
+        return this.getPlatformPlayer().getLastActionTime();
     }
 
     @Override
@@ -230,7 +205,7 @@ public class FabricPlayer extends PlotPlayer<ServerPlayer> {
                     LuckPermsProvider
                             .get()
                             .getPlayerAdapter(ServerPlayer.class)
-                            .getUser(player)
+                            .getUser(this.getPlatformPlayer())
                             .getCachedData()
                             .getPermissionData()
                             .getPermissionMap();
@@ -281,7 +256,7 @@ public class FabricPlayer extends PlotPlayer<ServerPlayer> {
         /*if (!WorldUtil.isValidLocation(location)) {
             return;
         }*/
-        player.teleportTo(FabricUtil.getWorld(location.getWorldName()), location.getX() + 0.5, location.getY(),
+        this.getPlatformPlayer().teleportTo(FabricUtil.getWorld(location.getWorldName()), location.getX() + 0.5, location.getY(),
                 location.getZ() + 0.5, location.getYaw(), location.getPitch()
         );
     }
@@ -289,7 +264,7 @@ public class FabricPlayer extends PlotPlayer<ServerPlayer> {
     @Override
     public String getName() {
         if (this.name == null) {
-            this.name = this.player.getName().getString();
+            this.name = this.getPlatformPlayer().getName().getString();
         }
         return this.name;
     }
@@ -299,7 +274,7 @@ public class FabricPlayer extends PlotPlayer<ServerPlayer> {
         /* TODO FIGURE OUT IMPLEMENTATION */
         /*
         CompassItemPropertyFunction
-        this.player.setCompassTarget(
+        this.getPlatformPlayer().setCompassTarget(
                 new org.bukkit.Location(BukkitUtil.getWorld(location.getWorldName()), location.getX(),
                         location.getY(), location.getZ()
                 ));*/
@@ -307,8 +282,11 @@ public class FabricPlayer extends PlotPlayer<ServerPlayer> {
 
     @Override
     public Location getLocationFull() {
-        return FabricUtil.adaptComplete(GlobalPos.of(this.player.level().dimension(), this.player.blockPosition()),
-                this.player.getXRot(), this.player.getYRot()
+        return FabricUtil.adaptComplete(GlobalPos.of(
+                        this.getPlatformPlayer().level().dimension(),
+                        this.getPlatformPlayer().blockPosition()
+                ),
+                this.getPlatformPlayer().getXRot(), this.getPlatformPlayer().getYRot()
         );
     }
 
@@ -321,7 +299,7 @@ public class FabricPlayer extends PlotPlayer<ServerPlayer> {
 
     @Override
     public com.sk89q.worldedit.world.gamemode.GameMode getGameMode() {
-        return switch (this.player.gameMode.getGameModeForPlayer()) {
+        return switch (this.getPlatformPlayer().gameMode.getGameModeForPlayer()) {
             case ADVENTURE -> ADVENTURE;
             case CREATIVE -> CREATIVE;
             case SPECTATOR -> SPECTATOR;
@@ -332,13 +310,13 @@ public class FabricPlayer extends PlotPlayer<ServerPlayer> {
     @Override
     public void setGameMode(final com.sk89q.worldedit.world.gamemode.GameMode gameMode) {
         if (ADVENTURE.equals(gameMode)) {
-            this.player.setGameMode(GameType.ADVENTURE);
+            this.getPlatformPlayer().setGameMode(GameType.ADVENTURE);
         } else if (CREATIVE.equals(gameMode)) {
-            this.player.setGameMode(GameType.CREATIVE);
+            this.getPlatformPlayer().setGameMode(GameType.CREATIVE);
         } else if (SPECTATOR.equals(gameMode)) {
-            this.player.setGameMode(GameType.SPECTATOR);
+            this.getPlatformPlayer().setGameMode(GameType.SPECTATOR);
         } else {
-            this.player.setGameMode(GameType.SURVIVAL);
+            this.getPlatformPlayer().setGameMode(GameType.SURVIVAL);
         }
     }
 
@@ -349,29 +327,29 @@ public class FabricPlayer extends PlotPlayer<ServerPlayer> {
 
     @Override
     public boolean getFlight() {
-        return player.getAbilities().flying;
+        return this.getPlatformPlayer().getAbilities().flying;
     }
 
     @Override
     public void setFlight(boolean fly) {
-        this.player.getAbilities().mayfly = fly;
-        if(!fly) {
-            this.player.getAbilities().flying = false;
+        this.getPlatformPlayer().getAbilities().mayfly = fly;
+        if (!fly) {
+            this.getPlatformPlayer().getAbilities().flying = false;
         }
-        player.onUpdateAbilities();
+        this.getPlatformPlayer().onUpdateAbilities();
     }
 
     @Override
     public void playMusic(final @NonNull Location location, final @NonNull ItemType id) {
         if (id == ItemTypes.AIR) {
             if (PlotSquared.platform().serverVersion()[1] >= 19) {
-                player.stopSound(SoundStop.source(Sound.Source.MUSIC));
+                this.getPlatformPlayer().stopSound(SoundStop.source(Sound.Source.MUSIC));
                 return;
             }
             // 1.18 and downwards require a specific Sound to stop (even tho the packet does not??)
             for (final Sound.Source sound : Sound.Source.values()) {
                 if (sound.name().startsWith("MUSIC_DISC")) {
-                    this.player.stopSound(SoundStop.source(Sound.Source.MUSIC));
+                    this.getPlatformPlayer().stopSound(SoundStop.source(Sound.Source.MUSIC));
                 }
             }
             return;
@@ -382,7 +360,7 @@ public class FabricPlayer extends PlotPlayer<ServerPlayer> {
                     "music_disc_",
                     "music_disc."
             )), Sound.Source.MUSIC, 1f, 1f);
-            player.playSound(sound, Sound.Emitter.self());
+            this.getPlatformPlayer().playSound(sound, Sound.Emitter.self());
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -391,31 +369,31 @@ public class FabricPlayer extends PlotPlayer<ServerPlayer> {
     @SuppressWarnings("deprecation") // Needed for Spigot compatibility
     @Override
     public void kick(final String message) {
-        this.player.connection.disconnect(Component.literal(message));
+        this.getPlatformPlayer().connection.disconnect(Component.literal(message));
     }
 
     @Override
     public void stopSpectating() {
         if (getGameMode() == SPECTATOR) {
-            this.player.setCamera(this.player.getCamera());
+            this.getPlatformPlayer().setCamera(this.getPlatformPlayer().getCamera());
         }
     }
 
     @Override
     public boolean isBanned() {
-        return this.player.server.getPlayerList().getBans().isBanned(this.player.getGameProfile());
+        return this.getPlatformPlayer().server.getPlayerList().getBans().isBanned(this.getPlatformPlayer().getGameProfile());
     }
 
     @Override
     public @NonNull Audience getAudience() {
-        return FabricUtil.FABRIC_AUDIENCES.player(this.player.getUUID());
+        return FabricUtil.FABRIC_AUDIENCES.player(this.getPlatformPlayer().getUUID());
     }
 
     @Override
     public void removeEffect(@NonNull String name) {
         MobEffect type = BuiltInRegistries.MOB_EFFECT.get(new ResourceLocation(name));
         if (type != null) {
-            player.removeEffect(type);
+            this.getPlatformPlayer().removeEffect(type);
         }
     }
 
@@ -424,7 +402,7 @@ public class FabricPlayer extends PlotPlayer<ServerPlayer> {
         if (other instanceof ConsolePlayer) {
             return true;
         } else {
-            return (((FabricPlayer) other).getPlatformPlayer().isInvisibleTo(this.player));
+            return (((FabricPlayer) other).getPlatformPlayer().isInvisibleTo(this.getPlatformPlayer()));
         }
     }
 

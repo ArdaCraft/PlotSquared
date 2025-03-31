@@ -34,7 +34,7 @@ public class PlaceholderFormatter implements ChatFormatter {
             if (context.isRawOutput()) {
                 context.setMessage(context.getMessage().replace('%', '\u2010'));
             } else {
-                final ServerPlayer player = ((FabricPlayer) recipient).player;
+                final ServerPlayer player = ((FabricPlayer) recipient).getPlatformPlayer();
                // context.setMessage(MiniPlaceholders.);
                 //context.setMessage(PlaceholderAPI.setPlaceholders(player, context.getMessage()));
             }

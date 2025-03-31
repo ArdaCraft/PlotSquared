@@ -119,6 +119,7 @@ import net.minecraft.commands.CommandBuildContext;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.core.GlobalPos;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -173,7 +174,7 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
     private boolean faweHook = false;
 
     private static CraftScheduler scheduler;
-
+    public PlotSquared plotSquared;
     private Injector injector;
 
     @Inject
@@ -262,7 +263,7 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
             getScheduler().mainThreadHeartbeat(server.getTickCount());
         });
 
-        ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+        ServerLifecycleEvents.SERVER_STARTED.register( server -> {
             SERVER = server;
             this.pluginName = "PlotSquared";
 
@@ -273,7 +274,7 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
             PlotPlayer.registerConverter(ServerPlayer.class, FabricUtil::adapt);
             TaskManager.setPlatformImplementation(new FabricTaskManager(this, timeConverter));
 
-            final PlotSquared plotSquared = new PlotSquared(this, "Fabric");
+            plotSquared = new PlotSquared(this, "Fabric");
 
             // FastAsyncWorldEdit
             if (Settings.FAWE_Components.FAWE_HOOK) {

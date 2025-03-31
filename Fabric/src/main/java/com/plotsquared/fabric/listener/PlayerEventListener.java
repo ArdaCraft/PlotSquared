@@ -89,9 +89,7 @@ import com.sk89q.worldedit.world.block.BlockType;
 import com.sk89q.worldedit.world.entity.EntityType;
 import com.sk89q.worldedit.world.entity.EntityTypes;
 import net.fabricmc.fabric.api.entity.event.v1.ServerEntityWorldChangeEvents;
-import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
-import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.fabricmc.fabric.api.networking.v1.ServerLoginConnectionEvents;
@@ -280,8 +278,11 @@ public class PlayerEventListener {
         PlayerBlockBreakEvents.AFTER.register(this::afterBlockBreak);
         UseBlockCallback.EVENT.register(PlayerEventListener::interact);
         Stimuli.global().listen(PlayerCommandEvent.EVENT, PlayerEventListener::onPlayerCommand);
+
         ServerPlayConnectionEvents.INIT.register(PlayerEventListener::onLoginInit);
+
         Stimuli.global().listen(BlockUseEvent.EVENT, this::onHangingPlace);
+
         Stimuli.global().listen(EntitySpawnEvent.EVENT, entity -> {
             Location location = FabricUtil.adapt(GlobalPos.of(entity.level().dimension(), entity.blockPosition()));
             PlotArea area = location.getPlotArea();
@@ -296,6 +297,7 @@ public class PlayerEventListener {
             }
             return InteractionResult.PASS;
         });
+
         Stimuli.global().listen(EntityDeathEvent.EVENT, this::onHangingBreakByEntity);
         Stimuli.global().listen(EntityUseEvent.EVENT, this::onPlayerInteractEntity);
         Stimuli.global().listen(EntityDeathEvent.EVENT, this::onVehicleDestroy);
@@ -303,43 +305,6 @@ public class PlayerEventListener {
         BaseFireBlockOnPlaceCallback.EVENT.register(this::onNetherPortalCreation);
         EntityHandleInsidePortalCallback.EVENT.register(this::onPortalEnter);
         LecternTakeButtonCallback.EVENT.register(this::onPlayerTakeLecternBook);
-        ServerEntityEvents.ENTITY_LOAD.register((entity, world) -> {
-            TaskManager.runTaskLater(() -> {
-                if (entity instanceof ServerPlayer serverPlayer) {
-                    final ServerPlayer player = serverPlayer;
-                    PlotSquared.platform().playerManager().removePlayer(player.getUUID());
-                    final PlotPlayer<ServerPlayer> pp = FabricUtil.adapt(player);
-
-                    // we're stripping the country code as we don't want to differ between countries
-                    //pp.setLocale(Locale.forLanguageTag(player.getLocale().substring(0, 2)));
-
-                    Location location = pp.getLocation();
-                    PlotArea area = location.getPlotArea();
-                    if (area != null) {
-                        Plot plot = area.getPlot(location);
-                        if (plot != null) {
-                            plotListener.plotEntry(pp, plot);
-                        }
-                    }
-                    // Async
-                    TaskManager.runTaskLaterAsync(() -> {
-                        /* TODO CHECK ON THIS */
-                /*if (!player.hasPlayedBefore() && player.isLocalPlayer()) {
-                    player.saveData();
-                }*/
-                        this.eventDispatcher.doJoinTask(pp);
-                    }, TaskTime.seconds(1L));
-                }
-            }, TaskTime.seconds(3L));
-
-        });
-        ServerLoginConnectionEvents.DISCONNECT.register(this::onLeave);
-        ServerPlayerEvents.AFTER_RESPAWN.register((oldPlayer, newPlayer, alive) -> {
-            ServerPlayer player = newPlayer;
-            PlotPlayer<ServerPlayer> pp = FabricUtil.adapt(player);
-            this.eventDispatcher.doRespawnTask(pp);
-        });
-
         HandlePlayerMoveCallback.EVENT.register((serverboundMovePlayerPacket, serverPlayer) -> {
             if (!serverboundMovePlayerPacket.hasPosition()) {
                 return InteractionResult.PASS;
@@ -361,11 +326,11 @@ public class PlayerEventListener {
             if (MathMan.roundInt(from.pos().getX()) != (x2 = MathMan.roundInt(to.pos().getX()))) {
                 ServerPlayer player = serverPlayer;
                 FabricPlayer pp;
-                       try {
-                          pp = FabricUtil.adapt(player);
-                       } catch (Exception e ) {
-                           return InteractionResult.PASS;
-                       }
+                try {
+                    pp = FabricUtil.adapt(player);
+                } catch (Exception e) {
+                    return InteractionResult.PASS;
+                }
                 // Cancel teleport
                 if (TaskManager.removeFromTeleportQueue(pp.getName())) {
                     pp.sendMessage(TranslatableCaption.of("teleport.teleport_failed"));
@@ -562,6 +527,43 @@ public class PlayerEventListener {
             }
             return InteractionResult.PASS;
         });
+
+        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+            TaskManager.runTaskLater(() -> {
+                final ServerPlayer player = handler.player;
+                PlotSquared.platform().playerManager().removePlayer(player.getUUID());
+                final PlotPlayer<ServerPlayer> pp = FabricUtil.adapt(player);
+
+                // we're stripping the country code as we don't want to differ between countries
+                //pp.setLocale(Locale.forLanguageTag(player.getLocale().substring(0, 2)));
+
+                Location location = pp.getLocation();
+                PlotArea area = location.getPlotArea();
+                if (area != null) {
+                    Plot plot = area.getPlot(location);
+                    if (plot != null) {
+                        plotListener.plotEntry(pp, plot);
+                    }
+                }
+                // Async
+                TaskManager.runTaskLaterAsync(() -> {
+                    /* TODO CHECK ON THIS */
+                /*if (!player.hasPlayedBefore() && player.isLocalPlayer()) {
+                    player.saveData();
+                }*/
+                    this.eventDispatcher.doJoinTask(pp);
+                }, TaskTime.seconds(1L));
+            }, TaskTime.seconds(3L));
+
+        });
+        ServerPlayConnectionEvents.DISCONNECT.register(this::onLeave);
+
+        ServerPlayerEvents.AFTER_RESPAWN.register((oldPlayer, newPlayer, alive) -> {
+            PlotPlayer<ServerPlayer> pp = FabricUtil.adapt(newPlayer);
+            this.eventDispatcher.doRespawnTask(pp);
+        });
+
+
         ServerPlayerTeleportToCallback.EVENT.register((serverLevel, x, y, z, set, g, h, serverPlayer) -> {
             ServerPlayer player = serverPlayer;
             //We need to account for bad plugins like NoCheatPlus that teleports player on/before login -_-
@@ -749,8 +751,10 @@ public class PlayerEventListener {
             //cancel the original message
             return InteractionResult.FAIL;
         });
+
         ServerEntityWorldChangeEvents.AFTER_PLAYER_CHANGE_WORLD.register((player, origin, destination) -> {
-            TaskManager.runTaskLater(() -> {FabricPlayer pp = FabricUtil.adapt(player);
+            TaskManager.runTaskLater(() -> {
+                FabricPlayer pp = FabricUtil.adapt(player);
                 // Delete last location
                 Plot plot;
                 try (final MetaDataAccess<Plot> lastPlotAccess =
@@ -778,7 +782,8 @@ public class PlayerEventListener {
                     if (plot != null) {
                         plotListener.plotEntry(pp, plot);
                     }
-                }}, TaskTime.seconds(3));
+                }
+            }, TaskTime.seconds(3));
 
         });
         Stimuli.global().listen(PlayerInventoryActionEvent.EVENT, (serverPlayer, i, clickType, i1) -> {
@@ -1529,9 +1534,9 @@ public class PlayerEventListener {
         return InteractionResult.PASS;
     }
 
-    public void onLeave(ServerLoginPacketListenerImpl handler, MinecraftServer server) {
-        TaskManager.removeFromTeleportQueue(handler.getUserName());
-        FabricPlayer pp = FabricUtil.adapt(FabricPlatform.SERVER.getPlayerList().getPlayerByName(handler.getUserName()));
+    public void onLeave(ServerGamePacketListenerImpl handler, MinecraftServer server) {
+        TaskManager.removeFromTeleportQueue(handler.player.getName().getString());
+        FabricPlayer pp = FabricUtil.adapt(handler.player);
         pp.unregister();
         plotListener.logout(pp.getUUID());
     }
@@ -1594,7 +1599,10 @@ public class PlayerEventListener {
     }
 
     public InteractionResult onHangingPlace(ServerPlayer player, InteractionHand hand, BlockHitResult hitResult) {
-        if (player.getUseItem().getItem() instanceof HangingEntityItem || player.getUseItem().getItem().equals(Items.PAINTING) || player.getUseItem().getItem() instanceof LeadItem) {
+        if (player.getUseItem().getItem() instanceof HangingEntityItem || player
+                .getUseItem()
+                .getItem()
+                .equals(Items.PAINTING) || player.getUseItem().getItem() instanceof LeadItem) {
             Block block = player.serverLevel().getBlockState(hitResult.getBlockPos()).getBlock();
             Location location = FabricUtil.adapt(GlobalPos.of(player.serverLevel().dimension(), hitResult.getBlockPos()));
             PlotArea area = location.getPlotArea();
@@ -1786,7 +1794,9 @@ public class PlayerEventListener {
             }
         } else if ((plot != null && !plot.isAdded(pp.getUUID())) || (plot == null && area
                 .isRoadFlags())) {
-            final com.sk89q.worldedit.world.entity.EntityType entityType = EntityType.REGISTRY.get(entity.getType().toShortString());
+            final com.sk89q.worldedit.world.entity.EntityType entityType = EntityType.REGISTRY.get(entity
+                    .getType()
+                    .toShortString());
 
             FlagContainer flagContainer;
             if (plot == null) {

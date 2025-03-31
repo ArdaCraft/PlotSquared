@@ -56,7 +56,7 @@ public class FabricInventoryUtil extends InventoryUtil {
     @Override
     public void open(PlotInventory inv) {
         FabricPlayer bp = (FabricPlayer) inv.getPlayer();
-        Inventory inventory = new Inventory(bp.player);
+        Inventory inventory = new Inventory(bp.getPlatformPlayer());
                 /*Bukkit.createInventory(null, inv.getLines() * 9,
                 ChatColor.translateAlternateColorCodes('&', inv.getTitle()));*/
         PlotItemStack[] items = inv.getItems();
@@ -66,7 +66,7 @@ public class FabricInventoryUtil extends InventoryUtil {
                 inventory.setItem(i, getItem(item));
             }
         }
-        bp.player.openMenu(new SimpleMenuProvider((i, inventory1, player) ->
+        bp.getPlatformPlayer().openMenu(new SimpleMenuProvider((i, inventory1, player) ->
                 ChestMenu.sixRows(i, inventory),
                 net.minecraft.network.chat.Component.literal(inv.getTitle())));
     }
@@ -77,13 +77,13 @@ public class FabricInventoryUtil extends InventoryUtil {
             return;
         }
         FabricPlayer bp = (FabricPlayer) inv.getPlayer();
-        bp.player.closeContainer();
+        bp.getPlatformPlayer().closeContainer();
     }
 
     @Override
     public boolean setItemChecked(PlotInventory inv, int index, PlotItemStack item) {
         FabricPlayer bp = (FabricPlayer) inv.getPlayer();
-        InventoryMenu opened = bp.player.inventoryMenu;
+        InventoryMenu opened = bp.getPlatformPlayer().inventoryMenu;
         ItemStack stack = getItem(item);
         if (stack == null) {
             return false;
@@ -110,7 +110,7 @@ public class FabricInventoryUtil extends InventoryUtil {
     @Override
     public PlotItemStack[] getItems(PlotPlayer<?> player) {
         FabricPlayer bp = (FabricPlayer) player;
-        Inventory inv = bp.player.getInventory();
+        Inventory inv = bp.getPlatformPlayer().getInventory();
         return IntStream.range(0, 36).mapToObj(i -> getItem(inv.getItem(i)))
                 .toArray(PlotItemStack[]::new);
     }
