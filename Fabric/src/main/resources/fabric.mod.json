@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "id": "plotsquared-fabric",
+  "id": "ArdaPlotSquared",
   "version": "${version}",
-  "name": "plotsquared-fabric",
+  "name": "ArdaPlotSquared",
   "description": "",
   "authors": [],
   "contact": {},
-  "license": "All-Rights-Reserved",
-  "icon": "assets/plotsquared-fabric/icon.png",
+  "license": "GPL-3.0-only",
+  "icon": "assets/ArdaPlotSquared/icon.png",
   "environment": "server",
   "entrypoints": {
     "main": [

@@ -1,10 +1,10 @@
 <p align="center">
-    <img src="https://raw.githubusercontent.com/IntellectualSites/Assets/main/plugins/PlotSquared/PlotSquared.svg" width="250">
+    <img src=".github/AC_LOGO_flat-white.svg" width="700">
 </p>
 
 ---
 
-PlotSquared is a land and world management plugin for Minecraft.
+Arda PlotSquared is a land and world management plugin for Minecraft.
 It includes several highly configurable world generators.
 You can create plots of land in existing worlds using plot clusters, or you can have a full world of plots.
 
@@ -13,36 +13,12 @@ It allows you to merge plots, and build together with your friends.
 You can also change a lot of plot specific settings in the form of
 flags. Such as: weather, time, game modes, pvp status.
 
-Whilst we provide a whole load of unique features, the biggest focus
-is to provide a lag-free and smooth experience.
-
-
-<p align="center">
-    <a href="https://bstats.org/plugin/bukkit/PlotSquared" title="PlotSquared on bStats">
-        <img src="https://bstats.org/signatures/bukkit/PlotSquared.svg" />
-    </a>
-</p>
+This fork aims to bring PlotSquared to Fabric 1.20.1 with behaviour as close as possible to the original version.
 
 ## Links
 
-* [Download](https://www.spigotmc.org/resources/77506/)
-* [Discord](https://discord.gg/intellectualsites)
-* [Wiki](https://intellectualsites.gitbook.io/plotsquared/)
-* [Issues](https://github.com/IntellectualSites/PlotSquared/issues)
-* [Translations](https://intellectualsites.crowdin.com/plotsquared/)
-* [Contributing](https://github.com/IntellectualSites/.github/blob/main/CONTRIBUTING.md)
-
-### Developer Resources
-
-* [API Documentation](https://intellectualsites.gitbook.io/plotsquared/api/api-documentation)
-* [Event API](https://intellectualsites.gitbook.io/plotsquared/api/event-api)
-* [Flag API](https://intellectualsites.gitbook.io/plotsquared/api/flag-api)
-
-# Official Addons
-
-* [Plot2Dynmap](http://www.spigotmc.org/resources/plot2dynmap.1292/)
-* [HoloPlots](https://www.spigotmc.org/resources/holoplots.4880/)
-* [PlotHider](https://www.spigotmc.org/resources/plot-hider.20701/)
+* [Discord](https://discord.com/invite/qcYBkCmAKZ)
+* [Issues](https://github.com/ArdaCraft/PlotSquared/issues)
 
 ### Edit The Code
 
@@ -53,16 +29,6 @@ see [CONTRIBUTING.md](https://github.com/IntellectualSites/.github/blob/main/CON
 
 ### Submitting Your Changes
 
-PlotSquared is open source (specifically licensed under GPL v3), so note that your contributions will also be open source. The
+Arda PlotSquared is open source (specifically licensed under GPL v3), so note that your contributions will also be open source. The
 best way to submit a change is to create a fork on GitHub, put your changes there, and then create a "pull request" on our
 PlotSquared repository.
-
-<a href="https://yourkit.com/">
-    <img src="https://www.yourkit.com/images/yklogo.png">
-</a>
-
-Thank you to YourKit for supporting our product by providing us with their innovative and intelligent tools
-for monitoring and profiling Java and .NET applications.
-YourKit is the creator
-of [YourKit Java Profiler](https://www.yourkit.com/java/profiler/), [YourKit .NET Profiler](https://www.yourkit.com/.net/profiler/),
-and [YourKit YouMonitor](https://www.yourkit.com/youmonitor/).

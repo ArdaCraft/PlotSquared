@@ -109,7 +109,7 @@ subprojects {
 
     java {
         withSourcesJar()
-        withJavadocJar()
+#        withJavadocJar()
     }
 
     val javaComponent = components["java"] as AdhocComponentWithVariants
@@ -135,8 +135,8 @@ subprojects {
                 pom {
 
                     name.set(project.name + " " + project.version)
-                    description.set("PlotSquared, a land and world management plugin for Minecraft.")
-                    url.set("https://github.com/IntellectualSites/PlotSquared")
+                    description.set("Arda PlotSquared, a land and world management mod for Minecraft brought to Fabric.")
+                    url.set("https://github.com/ArdaCraft/PlotSquared")
 
                     licenses {
                         license {
@@ -147,6 +147,24 @@ subprojects {
                     }
 
                     developers {
+                        developer {
+                            id.set("RacoonDog")
+                            name.set("Crosby")
+                            organization.set("ArdaCraft")
+                            organizationUrl.set("https://www.ardacraft.me")
+                        }
+                        developer {
+                            id.set("ShiroJR")
+                            name.set("ShiroJR")
+                            organization.set("ArdaCraft")
+                            organizationUrl.set("https://www.ardacraft.me")
+                        }
+                        developer {
+                            id.set("JayemCeekay")
+                            name.set("JayemCeekay")
+                            organization.set("ArdaCraft")
+                            organizationUrl.set("https://www.ardacraft.me")
+                        }
                         developer {
                             id.set("Sauilitired")
                             name.set("Alexander Söderberg")
@@ -175,15 +193,15 @@ subprojects {
                     }
 
                     scm {
-                        url.set("https://github.com/IntellectualSites/PlotSquared")
-                        connection.set("scm:git:https://github.com/IntellectualSites/PlotSquared.git")
-                        developerConnection.set("scm:git:git@github.com:IntellectualSites/PlotSquared.git")
+                        url.set("https://github.com/ArdaCraft/PlotSquared")
+                        connection.set("scm:git:https://github.com/ArdaCraft/PlotSquared.git")
+                        developerConnection.set("scm:git:git@github.com:ArdaCraft/PlotSquared.git")
                         tag.set("${project.version}")
                     }
 
                     issueManagement {
                         system.set("GitHub")
-                        url.set("https://github.com/IntellectualSites/PlotSquared/issues")
+                        url.set("https://github.com/ArdaCraft/PlotSquared/issues")
                     }
                 }
             }
