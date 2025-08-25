@@ -19,8 +19,10 @@
   ],
   "depends": {
     "fabricloader": ">=${loader_version}",
-    "fabric": "*",
+    "fabric-api": "*",
     "minecraft": "${minecraft_version}",
+    "multiworld": "*",
+    "stimuli": "*",
     "worldedit": "*"
   },
   "accessWidener": "plotsquared-fabric.accessWidener",
