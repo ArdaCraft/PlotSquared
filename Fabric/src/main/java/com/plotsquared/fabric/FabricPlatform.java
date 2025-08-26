@@ -783,7 +783,7 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
                         continue;
                     }
 
-                    switch (entity.getName().getString().toUpperCase()) {
+                    switch (entity.getName().getString().toUpperCase(Locale.ROOT)) {
                         case "EGG":
                         case "FISHING_HOOK":
                         case "ENDER_SIGNAL":

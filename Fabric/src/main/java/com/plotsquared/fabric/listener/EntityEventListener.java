@@ -63,6 +63,7 @@ import xyz.nucleoid.stimuli.event.entity.EntityDamageEvent;
 import xyz.nucleoid.stimuli.event.entity.EntitySpawnEvent;
 
 import java.util.List;
+import java.util.Locale;
 
 
 @SuppressWarnings("unused")
@@ -144,7 +145,7 @@ public class EntityEventListener {
         if (mob.getType() == EntityType.ARMOR_STAND) {
             return InteractionResult.FAIL;
         }
-        switch (mobSpawnType.name().toUpperCase()) {
+        switch (mobSpawnType.name().toUpperCase(Locale.ROOT)) {
             case "DISPENSE_EGG", "EGG", "OCELOT_BABY", "SPAWN_EGG" -> {
                 if (!area.isSpawnEggs()) {
                     mob.remove(Entity.RemovalReason.DISCARDED);

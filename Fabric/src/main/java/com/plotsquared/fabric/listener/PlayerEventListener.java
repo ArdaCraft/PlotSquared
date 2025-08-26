@@ -1105,7 +1105,7 @@ public class PlayerEventListener {
         if (Settings.UUID.OFFLINE) {
             if (Settings.UUID.FORCE_LOWERCASE) {
                 uuid = UUID.nameUUIDFromBytes(("OfflinePlayer:" + handler.player.getName().getString()
-                        .toLowerCase()).getBytes(Charsets.UTF_8));
+                        .toLowerCase(Locale.ROOT)).getBytes(Charsets.UTF_8));
             } else {
                 uuid = UUID.nameUUIDFromBytes(("OfflinePlayer:" + handler
                         .getPlayer()

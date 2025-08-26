@@ -218,7 +218,7 @@ public class PaperListener {
             ((Entity) mob).remove(Entity.RemovalReason.DISCARDED);
             return InteractionResult.FAIL;
         }
-        switch (mobSpawnType.name().toUpperCase()) {
+        switch (mobSpawnType.name().toUpperCase(Locale.ROOT)) {
             case "DISPENSE_EGG", "EGG", "OCELOT_BABY", "SPAWNER_EGG" -> {
                 if (!area.isSpawnEggs()) {
                     ((Entity) mob).remove(Entity.RemovalReason.DISCARDED);
@@ -425,7 +425,7 @@ public class PaperListener {
         if (unprocessedArgs.length == 1) {
             return InteractionResult.PASS; // We don't do anything in this case
         } else if (!Settings.Enabled_Components.TAB_COMPLETED_ALIASES
-                .contains(unprocessedArgs[0].toLowerCase(Locale.ENGLISH))) {
+                .contains(unprocessedArgs[0].toLowerCase(Locale.ROOT))) {
             return InteractionResult.PASS;
         }
         String[] args = new String[unprocessedArgs.length - 1];

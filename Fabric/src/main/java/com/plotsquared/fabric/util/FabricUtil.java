@@ -96,6 +96,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -388,10 +389,10 @@ public class FabricUtil extends WorldUtil {
             WoodType woodType =
                     WoodType.values().filter(woodType1 -> area
                             .getSignMaterial()
-                            .startsWith(woodType1.name().toUpperCase())).findFirst().get();
+                            .startsWith(woodType1.name().toUpperCase(Locale.ROOT))).findFirst().get();
             net.minecraft.world.level.block.state.BlockState sign = BuiltInRegistries.BLOCK.get(new ResourceLocation(
                     "minecraft",
-                    area.getSignMaterial().toLowerCase()
+                    area.getSignMaterial().toLowerCase(Locale.ROOT)
             )).defaultBlockState();
             sign = sign.setValue(WallSignBlock.FACING, facing);
             world.setBlock(signBlockPos, sign, 3, 512);

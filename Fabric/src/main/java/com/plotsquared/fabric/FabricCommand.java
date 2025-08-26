@@ -58,7 +58,7 @@ public class FabricCommand {
             return null;
         }
         PlotPlayer<?> player = FabricUtil.adapt(commandSender.getPlayer());
-        if (!Settings.Enabled_Components.TAB_COMPLETED_ALIASES.contains(label.toLowerCase(Locale.ENGLISH))) {
+        if (!Settings.Enabled_Components.TAB_COMPLETED_ALIASES.contains(label.toLowerCase(Locale.ROOT))) {
             return List.of();
         }
         Collection<com.plotsquared.core.command.Command> objects =

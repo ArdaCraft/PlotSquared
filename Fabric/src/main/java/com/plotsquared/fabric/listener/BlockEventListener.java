@@ -123,6 +123,7 @@ import xyz.nucleoid.stimuli.event.world.FluidFlowEvent;
 
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 
@@ -462,10 +463,7 @@ public class BlockEventListener {
         if (plot == null) {
             return InteractionResult.PASS;
         }
-        switch (blockState.getBlock().toString().substring(
-                blockState.getBlock().toString().indexOf(":") + 1,
-                blockState.getBlock().toString().length() - 1
-        ).toUpperCase()) {
+        switch (BuiltInRegistries.BLOCK.getKey(blockState.getBlock()).getPath().toUpperCase(Locale.ROOT)) {
             case "GRASS_BLOCK":
                 if (!plot.getFlag(GrassGrowFlag.class)) {
                     plot.debug("Grass could not grow because grass-grow = false");
@@ -1020,7 +1018,7 @@ public class BlockEventListener {
             return InteractionResult.PASS;
         }
         Item type = stackToDispense.getItem();
-        switch (BuiltInRegistries.ITEM.getKey(type).getPath().toUpperCase()) {
+        switch (BuiltInRegistries.ITEM.getKey(type).getPath().toUpperCase(Locale.ROOT)) {
             case "SHULKER_BOX", "WHITE_SHULKER_BOX", "ORANGE_SHULKER_BOX", "MAGENTA_SHULKER_BOX", "LIGHT_BLUE_SHULKER_BOX",
                     "YELLOW_SHULKER_BOX", "LIME_SHULKER_BOX", "PINK_SHULKER_BOX", "GRAY_SHULKER_BOX", "LIGHT_GRAY_SHULKER_BOX",
                     "CYAN_SHULKER_BOX", "PURPLE_SHULKER_BOX", "BLUE_SHULKER_BOX", "BROWN_SHULKER_BOX", "GREEN_SHULKER_BOX",

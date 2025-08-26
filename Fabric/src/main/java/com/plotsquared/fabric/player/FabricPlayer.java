@@ -40,6 +40,7 @@ import net.minecraft.world.phys.Vec3;
 import org.checkerframework.checker.index.qual.NonNegative;
 import org.checkerframework.checker.nullness.qual.NonNull;
 
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
@@ -135,7 +136,7 @@ public class FabricPlayer extends PlotPlayer<ServerPlayer> {
         if (Settings.UUID.OFFLINE) {
             if (Settings.UUID.FORCE_LOWERCASE) {
                 return UUID.nameUUIDFromBytes(("OfflinePlayer:" +
-                        getName().toLowerCase()).getBytes(Charsets.UTF_8));
+                        getName().toLowerCase(Locale.ROOT)).getBytes(Charsets.UTF_8));
             } else {
                 return UUID.nameUUIDFromBytes(("OfflinePlayer:" +
                         getName()).getBytes(Charsets.UTF_8));
