@@ -109,7 +109,7 @@ subprojects {
 
     java {
         withSourcesJar()
-#        withJavadocJar()
+        //withJavadocJar()
     }
 
     val javaComponent = components["java"] as AdhocComponentWithVariants

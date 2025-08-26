@@ -108,7 +108,7 @@ tasks {
         opt.links("https://google.github.io/guice/api-docs/" + libs.guice.get().versionConstraint.toString() + "/javadoc/")
     //    opt.links("https://checkerframework.org/api/")
         opt.isLinkSource = true
-        opt.bottom(File("$rootDir/javadocfooter.html").readText())
+        //opt.bottom(File("$rootDir/javadocfooter.html").readText())
         opt.isUse = true
         opt.encoding("UTF-8")
         opt.keyWords()
