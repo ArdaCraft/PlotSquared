@@ -46,7 +46,7 @@ public class FabricOfflinePlayer implements OfflinePlotPlayer {
 
     @Override
     public String getName() {
-        return this.player.getName().getString();
+        return this.player.getGameProfile().getName();
     }
 
     @Override

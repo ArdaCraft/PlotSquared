@@ -1104,19 +1104,19 @@ public class PlayerEventListener {
         final UUID uuid;
         if (Settings.UUID.OFFLINE) {
             if (Settings.UUID.FORCE_LOWERCASE) {
-                uuid = UUID.nameUUIDFromBytes(("OfflinePlayer:" + handler.player.getName().getString()
+                uuid = UUID.nameUUIDFromBytes(("OfflinePlayer:" + handler.player.getGameProfile().getName()
                         .toLowerCase(Locale.ROOT)).getBytes(Charsets.UTF_8));
             } else {
                 uuid = UUID.nameUUIDFromBytes(("OfflinePlayer:" + handler
                         .getPlayer()
-                        .getName()
-                        .getString()).getBytes(Charsets.UTF_8));
+                        .getGameProfile()
+                        .getName()).getBytes(Charsets.UTF_8));
             }
         } else {
             uuid = UUID.fromString(handler.player.getStringUUID());
             //server.getProfileRepository().findProfilesByNames().get(handler.getUserName()).get().getId();
         }
-        PlotSquared.get().getImpromptuUUIDPipeline().storeImmediately(handler.player.getName().getString(), uuid);
+        PlotSquared.get().getImpromptuUUIDPipeline().storeImmediately(handler.player.getGameProfile().getName(), uuid);
     }
 
     public static String getUUID(String playerName) throws IOException {
@@ -1535,7 +1535,7 @@ public class PlayerEventListener {
     }
 
     public void onLeave(ServerGamePacketListenerImpl handler, MinecraftServer server) {
-        TaskManager.removeFromTeleportQueue(handler.player.getName().getString());
+        TaskManager.removeFromTeleportQueue(handler.player.getGameProfile().getName());
         FabricPlayer pp = FabricUtil.adapt(handler.player);
         pp.unregister();
         plotListener.logout(pp.getUUID());

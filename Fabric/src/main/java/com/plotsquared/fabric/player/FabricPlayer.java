@@ -265,7 +265,7 @@ public class FabricPlayer extends PlotPlayer<ServerPlayer> {
     @Override
     public String getName() {
         if (this.name == null) {
-            this.name = this.getPlatformPlayer().getName().getString();
+            this.name = this.getPlatformPlayer().getGameProfile().getName();
         }
         return this.name;
     }

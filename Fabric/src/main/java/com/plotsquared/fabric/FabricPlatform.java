@@ -119,6 +119,7 @@ import net.minecraft.commands.CommandBuildContext;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.core.GlobalPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -783,7 +784,7 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
                         continue;
                     }
 
-                    switch (entity.getName().getString().toUpperCase(Locale.ROOT)) {
+                    switch (BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).getPath().toUpperCase(Locale.ROOT)) {
                         case "EGG":
                         case "FISHING_HOOK":
                         case "ENDER_SIGNAL":

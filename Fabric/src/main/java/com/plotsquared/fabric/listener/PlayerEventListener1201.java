@@ -63,7 +63,7 @@ public class PlayerEventListener1201 {
         }
         if (!plot.getFlag(EditSignFlag.class)
                 && !FabricUtil.adapt(serverPlayer).hasPermission(Permission.PERMISSION_ADMIN_INTERACT_OTHER.toString())) {
-            plot.debug(serverPlayer.getName().getString() + " could not edit the sign because of edit-sign = false");
+            plot.debug(serverPlayer.getGameProfile().getName() + " could not edit the sign because of edit-sign = false");
             return InteractionResult.FAIL;
         }
         return InteractionResult.PASS;
