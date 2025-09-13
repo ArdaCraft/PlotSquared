@@ -141,4 +141,5 @@ build/
 run-[0-9].[0-9][0-9]/
 run-[0-9].[0-9][0-9].[0-9]/
 /Fabric/run
+/Fabric/runClient
 /Fabric/DepLibs
