@@ -185,17 +185,41 @@ public final class FabricChunkCoordinator extends ChunkCoordinator {
         for (int i = 0; i < this.batchSize && (chunk = this.requestedChunks.poll()) != null; i++) {
             // This required PaperLib to be bumped to version 1.0.4 to mark the request as urgent
             loadingChunks.incrementAndGet();
-            serverLevel.getChunkSource().getChunkFuture(chunk.getX(), chunk.getZ(), ChunkStatus.FULL, true)
+            final BlockVector2 finalChunk = chunk;
+            serverLevel.getChunkSource()
+                    .getChunkFuture(chunk.getX(), chunk.getZ(), ChunkStatus.FULL, true)
                     .whenComplete((chunkObject, throwable) -> {
                         loadingChunks.decrementAndGet();
+
                         if (throwable != null) {
                             throwable.printStackTrace();
-                            // We want one less because this couldn't be processed
                             this.expectedSize.decrementAndGet();
-                        } else if (PlotSquared.get().isMainThread(FabricPlatform.SERVER.getRunningThread())) {
-                            this.processChunk(chunkObject.left().get());
+                            return;
+                        }
+
+                        if (chunkObject.left().isEmpty()) {
+                           /* System.err.println("Chunk at (" + finalChunk.x() + ", " + finalChunk.z() + ") is not generated. " +
+                                    "Generating...");*/
+
+                            // Force the chunk to generate synchronously in a worker thread
+                            TaskManager.runTask(() -> {
+                                ChunkAccess generatedChunk = serverLevel.getChunk(
+                                        finalChunk.getX(),
+                                        finalChunk.getZ(),
+                                        ChunkStatus.FULL,
+                                        true
+                                );
+                                /*System.out.println("Chunk at (" + finalChunk.getX() + ", " + finalChunk.getZ() + ") has been " +
+                                        "generated.");*/
+                                this.processChunk(generatedChunk);
+                            });
                         } else {
-                            TaskManager.runTask(() -> this.processChunk(chunkObject.left().get()));
+                            ChunkAccess chunkAccess = chunkObject.orThrow();
+                            if (PlotSquared.get().isMainThread(FabricPlatform.SERVER.getRunningThread())) {
+                                this.processChunk(chunkAccess);
+                            } else {
+                                TaskManager.runTask(() -> this.processChunk(chunkAccess));
+                            }
                         }
                     });
         }

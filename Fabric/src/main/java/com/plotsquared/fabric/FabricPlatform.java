@@ -602,8 +602,14 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
                         } else {
                             int index = 0;
                             do {
-                                final LevelChunk chunkI = world.getChunkSource().chunkMap.visibleChunkMap.removeFirst()
-                                        .getFullChunk();
+                                final LevelChunk chunkI;
+                                try {
+                                    chunkI =
+                                            world.getChunkSource().chunkMap.visibleChunkMap.removeFirst().getFullChunkFuture().orTimeout(10, TimeUnit.SECONDS).get()
+                                                    .orThrow();
+                                } catch (InterruptedException | ExecutionException e) {
+                                    throw new RuntimeException(e);
+                                }
                                 world.unload(chunkI);
                                 if (System.currentTimeMillis() - start > 5) {
                                     return;

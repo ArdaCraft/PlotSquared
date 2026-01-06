@@ -5,27 +5,17 @@ import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.moulberry.axiom.packets.AxiomServerboundSetBlock;
 import com.plotsquared.fabric.FabricPlatform;
-import com.plotsquared.fabric.listener.BlockEventListener;
-import net.fabricmc.fabric.api.event.player.AttackBlockCallback;
-import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
-import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
-import net.minecraft.world.item.context.BlockPlaceContext;
-import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.chunk.LevelChunk;
-import net.minecraft.world.phys.BlockHitResult;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 
-import java.util.Iterator;
 import java.util.Map;
+import java.util.Set;
 
 @Mixin(AxiomServerboundSetBlock.class)
 public class AxiomServerboundSetBlockPacketMixin {
@@ -36,11 +26,19 @@ public class AxiomServerboundSetBlockPacketMixin {
 
     @Shadow
     @Final
-    private boolean updateNeighbors;
+    private Set<BlockPos> preventUpdatesAt;
 
     @WrapMethod(method = "handle")
     public void onHandle(MinecraftServer server, ServerPlayer player, Operation<Void> original) {
-        Iterator var32;
+        for(Map.Entry<BlockPos, BlockState> entry : this.blocks.entrySet()) {
+            InteractionResult result = FabricPlatform.PLATFORM.blockEventListener.blockCreateAxiom(player, player.serverLevel(),
+                    entry.getKey(), entry.getValue(), null
+            );
+            if (result != InteractionResult.PASS) {
+                preventUpdatesAt.add(entry.getKey());
+            }
+        }
+        /*Iterator var32;
         Map.Entry entry;
         if (this.updateNeighbors) {
             var32 = this.blocks.entrySet().iterator();
@@ -104,7 +102,7 @@ public class AxiomServerboundSetBlockPacketMixin {
                     } while (sectionIndex < 0);
                 } while (sectionIndex >= level.getSectionsCount());
             }
-        }
+        }*/
         original.call(server, player);
     }
 

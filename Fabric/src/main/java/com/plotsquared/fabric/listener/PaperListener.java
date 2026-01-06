@@ -425,15 +425,15 @@ public class PaperListener {
         if (unprocessedArgs.length == 1) {
             return InteractionResult.PASS; // We don't do anything in this case
         } else if (!Settings.Enabled_Components.TAB_COMPLETED_ALIASES
-                .contains(unprocessedArgs[0].toLowerCase(Locale.ROOT))) {
+                .contains(unprocessedArgs[0].toLowerCase(Locale.ENGLISH))) {
             return InteractionResult.PASS;
         }
         String[] args = new String[unprocessedArgs.length - 1];
         System.arraycopy(unprocessedArgs, 1, args, 0, args.length);
-        if(buffer.endsWith(" ")) {
+        if (buffer.endsWith(" ")) {
             args = new String[unprocessedArgs.length];
-            System.arraycopy(unprocessedArgs, 1, args, 0, args.length-1);
-            args[args.length-1] = "";
+            System.arraycopy(unprocessedArgs, 1, args, 0, args.length - 1);
+            args[args.length - 1] = "";
         }
         try {
             final PlotPlayer<?> player = FabricUtil.adapt(serverPlayer);
@@ -460,27 +460,22 @@ public class PaperListener {
             serverPlayer.server.getCommands().getDispatcher().getCompletionSuggestions(parseResults).thenAccept((suggestions) -> {
                 Suggestions replacements =
                         new Suggestions(
-                                StringRange.at(
-                                        (finalBuffer.length()) + 1
+                                new StringRange(
+                                        finalBuffer.length() - finalArgs[finalArgs.length - 1].length() + 1,
+                                        finalBuffer.length() + 1
                                 ),
                                 new ArrayList<>()
                         );
-                if(finalArgs[finalArgs.length-1].isBlank()) {
-                    result.forEach(s -> {
+                result.forEach(s -> {
+                    if (s.startsWith(finalArgs[finalArgs.length - 1])) {
                         replacements.getList().add(new Suggestion(
-                                StringRange.at((finalBuffer.length())),
-                                s
+                                StringRange.between(
+                                        finalBuffer.length() - finalArgs[finalArgs.length - 1].length(),
+                                        finalBuffer.length() + 1
+                                ), s
                         ));
-                    });
-                } else {
-                    result.forEach(s -> {
-                        replacements.getList().add(new Suggestion(
-                                StringRange.at((finalBuffer.length())),
-                                s.substring((unprocessedArgs[unprocessedArgs.length - 1].length()))
-                        ));
-                    });
-                }
-
+                    }
+                });
                 serverPlayer.connection.send(new ClientboundCommandSuggestionsPacket(
                         serverboundCommandSuggestionPacket.getId(),
                         replacements

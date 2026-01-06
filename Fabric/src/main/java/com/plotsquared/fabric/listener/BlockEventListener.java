@@ -269,6 +269,39 @@ public class BlockEventListener {
         return InteractionResult.PASS;
     }
 
+
+    public InteractionResult onBiomeChangeAxiom(ServerPlayer player, ServerLevel world, BlockPos pos) {
+        Location location = FabricUtil.adapt(GlobalPos.of(world.dimension(), pos));
+        PlotArea area = location.getPlotArea();
+        if (area == null) {
+            return InteractionResult.PASS;
+        }
+        FabricPlayer pp = FabricUtil.adapt(player);
+        Plot plot = area.getPlot(location);
+        if (plot != null) {
+            if (area.notifyIfOutsideBuildArea(pp, location.getY())) {
+                return InteractionResult.FAIL;
+            }
+            if (!plot.hasOwner()) {
+                if (!pp.hasPermission(Permission.PERMISSION_ADMIN_BUILD_UNOWNED)) {
+                    return InteractionResult.FAIL;
+                }
+            } else if (!plot.isAdded(pp.getUUID())) {
+                if (!pp.hasPermission(Permission.PERMISSION_ADMIN_BUILD_OTHER)) {
+                    return InteractionResult.FAIL;
+                }
+            } else if (Settings.Done.RESTRICT_BUILDING && DoneFlag.isDone(plot)) {
+                if (!pp.hasPermission(Permission.PERMISSION_ADMIN_BUILD_OTHER)) {
+                    return InteractionResult.FAIL;
+                }
+            }
+        } else if (!pp.hasPermission(Permission.PERMISSION_ADMIN_BUILD_ROAD)) {
+            return InteractionResult.FAIL;
+        }
+        return InteractionResult.PASS;
+    }
+
+
     public InteractionResult blockCreateAxiom(
             ServerPlayer player, ServerLevel world, BlockPos pos, BlockState state,
             @Nullable UseOnContext context

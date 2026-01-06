@@ -370,7 +370,7 @@ public class FabricPlayer extends PlotPlayer<ServerPlayer> {
     @SuppressWarnings("deprecation") // Needed for Spigot compatibility
     @Override
     public void kick(final String message) {
-        this.getPlatformPlayer().connection.disconnect(Component.literal(message));
+        this.getPlatformPlayer().connection.disconnect(Component.translatable(message));
     }
 
     @Override

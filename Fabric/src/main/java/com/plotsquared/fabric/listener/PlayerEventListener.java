@@ -92,6 +92,7 @@ import net.fabricmc.fabric.api.entity.event.v1.ServerEntityWorldChangeEvents;
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
 import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
+import net.fabricmc.fabric.api.event.player.UseItemCallback;
 import net.fabricmc.fabric.api.networking.v1.ServerLoginConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.tag.convention.v1.TagUtil;
@@ -272,6 +273,61 @@ public class PlayerEventListener {
         Stimuli.global().listen(ItemPickupEvent.EVENT, this::onItemPickup);
         Stimuli.global().listen(BlockTrampleEvent.EVENT, this::onTrample);
         EmptyContentsCallback.EVENT.register(this::onBucketEmpty);
+        UseItemCallback.EVENT.register((player, world, hand) -> {
+            if (player instanceof ServerPlayer serverPlayer) {
+                if (serverPlayer.getUseItem().getItem() instanceof BucketItem) {
+                    Location location = FabricUtil.adapt(GlobalPos.of(world.dimension(), player.blockPosition()));
+                    PlotArea area = location.getPlotArea();
+                    if (area == null) {
+                        return InteractionResultHolder.pass(player.getItemInHand(hand));
+                    }
+                    FabricPlayer plotPlayer = FabricUtil.adapt(serverPlayer);
+                    Plot plot = area.getPlot(location);
+                    if (plot == null) {
+                        if (plotPlayer.hasPermission(Permission.PERMISSION_ADMIN_BUILD_ROAD)) {
+                            return InteractionResultHolder.pass(player.getItemInHand(hand));
+                        }
+                        plotPlayer.sendMessage(
+                                TranslatableCaption.of("permission.no_permission_event"),
+                                TagResolver.resolver("node", Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_ROAD))
+                        );
+                        return InteractionResultHolder.fail(player.getItemInHand(hand));
+                    } else if (!plot.hasOwner()) {
+                        if (plotPlayer.hasPermission(Permission.PERMISSION_ADMIN_BUILD_UNOWNED)) {
+                            return InteractionResultHolder.pass(player.getItemInHand(hand));
+                        }
+                        plotPlayer.sendMessage(
+                                TranslatableCaption.of("permission.no_permission_event"),
+                                TagResolver.resolver(
+                                        "node",
+                                        Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_UNOWNED)
+                                )
+                        );
+                        return InteractionResultHolder.fail(player.getItemInHand(hand));
+                    } else if (!plot.isAdded(plotPlayer.getUUID())) {
+                        if (plotPlayer.hasPermission(Permission.PERMISSION_ADMIN_BUILD_OTHER)) {
+                            return InteractionResultHolder.pass(player.getItemInHand(hand));
+                        }
+                        plotPlayer.sendMessage(
+                                TranslatableCaption.of("permission.no_permission_event"),
+                                TagResolver.resolver(
+                                        "node",
+                                        Tag.inserting(Permission.PERMISSION_ADMIN_BUILD_OTHER)
+                                )
+                        );
+                        return InteractionResultHolder.fail(player.getItemInHand(hand));
+                    } else if (Settings.Done.RESTRICT_BUILDING && DoneFlag.isDone(plot)) {
+                        if (!plotPlayer.hasPermission(Permission.PERMISSION_ADMIN_BUILD_OTHER)) {
+                            plotPlayer.sendMessage(
+                                    TranslatableCaption.of("done.building_restricted")
+                            );
+                            return InteractionResultHolder.fail(player.getItemInHand(hand));
+                        }
+                    }
+                }
+            }
+            return InteractionResultHolder.pass(player.getItemInHand(hand));
+        });
         UseBlockCallback.EVENT.register(this::onBucketFill);
         HandleContainerCloseCallback.EVENT.register(this::onInventoryClose);
         ServerPlayerEvents.AFTER_RESPAWN.register(this::onDeath);
@@ -692,10 +748,10 @@ public class PlayerEventListener {
             }
             if (!((plot.getFlag(ChatFlag.class) && area.isPlotChat() && plotPlayer.getAttribute("chat"))
                     || area.isForcingPlotChat())) {
-                return InteractionResult.FAIL;
+                return InteractionResult.PASS;
             }
             if (plot.isDenied(plotPlayer.getUUID()) && !plotPlayer.hasPermission(Permission.PERMISSION_ADMIN_CHAT_BYPASS)) {
-                return InteractionResult.FAIL;
+                return InteractionResult.PASS;
             }
             /*
             event.setCancelled(true);
@@ -1520,6 +1576,7 @@ public class PlayerEventListener {
                     return InteractionResult.FAIL;
                 }
             }
+            return InteractionResult.FAIL;
         }
         return InteractionResult.PASS;
     }

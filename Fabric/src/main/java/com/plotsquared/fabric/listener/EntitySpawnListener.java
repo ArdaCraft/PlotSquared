@@ -57,6 +57,9 @@ public class EntitySpawnListener {
 
     public EntitySpawnListener() {
         Stimuli.global().listen(EntitySpawnEvent.EVENT, entity -> {
+            if(entity.isRemoved()) {
+                return InteractionResult.FAIL;
+            }
             Location location = FabricUtil.adapt(GlobalPos.of(entity.level().dimension(), entity.blockPosition()));
             PlotArea area = location.getPlotArea();
             if (!location.isPlotArea() || area == null) {
