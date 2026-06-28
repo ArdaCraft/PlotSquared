@@ -158,4 +158,9 @@ public class ProcessedWEExtent extends AbstractDelegateExtent {
                 .setBiome(position, biome);
     }
 
+    @Override
+    public boolean setBiome(BlockVector3 position, BiomeType biome) {
+        return WEManager.maskContains(this.mask, position.getX(), position.getY(), position.getZ())
+                && super.setBiome(position, biome);
+    }
 }

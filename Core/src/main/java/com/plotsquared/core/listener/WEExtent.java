@@ -72,6 +72,12 @@ public class WEExtent extends AbstractDelegateExtent {
     }
 
     @Override
+    public boolean setBiome(BlockVector3 position, BiomeType biome) {
+        return WEManager.maskContains(this.mask, position.getX(), position.getY(), position.getZ())
+                && super.setBiome(position, biome);
+    }
+
+    @Override
     public BlockState getBlock(BlockVector3 location) {
         if (WEManager.maskContains(this.mask, location.getX(), location.getY(), location.getZ())) {
             return super.getBlock(location);
