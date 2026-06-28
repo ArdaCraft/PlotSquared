@@ -19,8 +19,7 @@
 package com.plotsquared.fabric.util;
 
 import com.plotsquared.core.PlotSquared;
-import com.plotsquared.core.generator.GeneratorWrapper;
-import com.plotsquared.core.util.SetupUtils;
+import com.plotsquared.fabric.FabricPlatform;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.chunk.ChunkGenerator;
 
@@ -28,36 +27,18 @@ public class SetGenFabric {
 
     public static void setGenerator(ServerLevel world) {
         PlotSquared.platform().setupUtils().updateGenerators(false);
-        PlotSquared.get().removePlotAreas(world.dimension().location().getPath());
-        ChunkGenerator gen = world.getChunkSource().chunkMap.generator;
-        //FabricPlatform.SERVER.registryAccess().registry(Registries.CHUNK_GENERATOR).get().get().decode().get().left().get()
-        // .getFirst();
-        String name = gen.getClass().getCanonicalName();
-        boolean set = false;
+        String worldName = world.dimension().location().getPath();
+        PlotSquared.get().removePlotAreas(worldName);
 
-        for (GeneratorWrapper<?> wrapper : SetupUtils.generators.values()) {
-            ChunkGenerator newGen = (ChunkGenerator) wrapper.getPlatformGenerator();
-            if (newGen == null) {
-                newGen = (ChunkGenerator) wrapper;
-            }
+        // Create a world-specific generator instead of using the shared one from SetupUtils.generators
+        ChunkGenerator newGen = FabricPlatform.PLATFORM.getDefaultWorldGenerator(worldName, "");
+        if (newGen != null) {
             world.getChunkSource().chunkMap.generator = newGen;
-            // if (newGen.getClass().equals(gen.getClass())) {
-            // Set generator
-            //if (newGen instanceof FabricPlotGenerator fabricPlotGenerator) {
-            //     fabricPlotGenerator.checkLoaded(world);
-            //   }
-            // end
-            set = true;
-            break;
-            //  }
-        }/*
-        if (!set) {
-            world.getPopulators()
-                    .removeIf(blockPopulator -> blockPopulator instanceof FabricAugmentedGenerator);
-        }*/
+        }
+
         PlotSquared.get().loadWorld(
-                world.dimension().location().getPath(),
-                PlotSquared.platform().getGenerator(world.dimension().location().getPath(), null)
+                worldName,
+                PlotSquared.platform().getGenerator(worldName, null)
         );
     }
 

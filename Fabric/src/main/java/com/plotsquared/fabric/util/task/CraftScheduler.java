@@ -49,7 +49,12 @@ public class CraftScheduler implements FabricScheduler {
      */
     private final ConcurrentHashMap<Integer, CraftTask> runners = new ConcurrentHashMap<Integer, CraftTask>();
     private volatile int currentTick = -1;
-    private final Executor executor = Executors.newCachedThreadPool();
+    private final Executor executor = Executors.newCachedThreadPool(r -> {
+        Thread thread = new Thread(r);
+        thread.setDaemon(true);
+        thread.setName("PlotSquared Fabric Task Thread");
+        return thread;
+    });
     private static final int RECENT_TICKS;
 
     static {

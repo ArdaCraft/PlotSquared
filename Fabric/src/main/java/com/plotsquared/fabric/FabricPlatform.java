@@ -638,7 +638,12 @@ public class FabricPlatform implements ModInitializer, PlotPlatform<ServerPlayer
 
         LOGGER.info("(UUID) {} UUIDs will be cached", uuidQueue.size());
 
-        Executors.newSingleThreadScheduledExecutor().schedule(() -> {
+        Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread thread = new Thread(r);
+            thread.setDaemon(true);
+            thread.setName("PlotSquared UUID Cache Thread");
+            return thread;
+        }).schedule(() -> {
             // Begin by reading all the SQLite cache at once
             cacheUUIDService.accept(sqLiteUUIDService.getAll());
             // Now fetch names for all known UUIDs

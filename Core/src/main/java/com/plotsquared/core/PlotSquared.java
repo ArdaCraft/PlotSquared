@@ -126,9 +126,19 @@ public class PlotSquared {
     private final Thread thread;
     // UUID pipelines
     private final UUIDPipeline impromptuUUIDPipeline =
-            new UUIDPipeline(Executors.newCachedThreadPool());
+            new UUIDPipeline(Executors.newCachedThreadPool(r -> {
+                Thread thread = new Thread(r);
+                thread.setDaemon(true);
+                thread.setName("PlotSquared Impromptu UUID Pipeline");
+                return thread;
+            }));
     private final UUIDPipeline backgroundUUIDPipeline =
-            new UUIDPipeline(Executors.newSingleThreadExecutor());
+            new UUIDPipeline(Executors.newSingleThreadExecutor(r -> {
+                Thread thread = new Thread(r);
+                thread.setDaemon(true);
+                thread.setName("PlotSquared Background UUID Pipeline");
+                return thread;
+            }));
     // Localization
     private final Map<String, CaptionMap> captionMaps = new HashMap<>();
     public HashMap<String, HashMap<PlotId, Plot>> plots_tmp;
